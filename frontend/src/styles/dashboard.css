@@ -848,6 +848,41 @@ button {
   left: 12px;
 }
 
+.ocean-viewer__overlay--status {
+  bottom: 12px;
+  left: 12px;
+  pointer-events: none;
+}
+
+.view-label--status {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.app-root {
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-root .app-shell {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
+.api-status-banner {
+  padding: 6px 16px;
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: #f59e42;
+  background: rgba(245, 158, 66, 0.08);
+  border-bottom: 1px solid rgba(245, 158, 66, 0.25);
+}
+
 .ocean-viewer__overlay--depth {
   top: 12px;
   right: 12px;
