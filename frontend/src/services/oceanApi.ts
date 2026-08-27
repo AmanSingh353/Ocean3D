@@ -37,6 +37,7 @@ async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
     response = await fetch(`${API_BASE_URL}${path}`, { signal })
   } catch (error) {
     if (isAbortError(error)) throw error
+    console.error('[Ocean3D] API connection error:', error)
     throw new ApiError('Unable to connect to Ocean3D API', 0)
   }
 
@@ -52,12 +53,14 @@ async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
     } catch {
       // keep statusText
     }
+    console.error('[Ocean3D] API error:', response.status, path, detail)
     throw new ApiError(detail || `Request failed (${response.status})`, response.status)
   }
 
   try {
     return (await response.json()) as T
-  } catch {
+  } catch (error) {
+    console.error('[Ocean3D] Invalid JSON response:', path, error)
     throw new ApiError('Invalid JSON response from API', response.status)
   }
 }
@@ -86,6 +89,15 @@ export function getTemperatureField(
     date: toDateParam(date),
   })
   return request<ApiTemperatureField>(`/api/model/temperature?${params}`, signal)
+}
+
+/** Alias for getTemperatureField — fetches the ocean temperature grid. */
+export function getTemperature(
+  depth: number,
+  date: string,
+  signal?: AbortSignal,
+): Promise<ApiTemperatureField> {
+  return getTemperatureField(depth, date, signal)
 }
 
 export function getInstruments(

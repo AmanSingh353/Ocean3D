@@ -1,0 +1,336 @@
+import {
+  createContext,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
+import { MODEL_CONFIG } from '../data/mockModel'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import {
+  formatObservationTime,
+  getComparisonAtDepth,
+  getInstrument,
+  getInstrumentProfile,
+  getInstruments,
+  getModelMetadata,
+  getTemperature,
+  isAbortError,
+  mapInstrument,
+  mapInstrumentProfile,
+  mapInstrumentSummary,
+  snapDepth,
+  toDateParam,
+} from '../services/oceanApi'
+import type { ApiTemperatureField } from '../types/api'
+import type { OceanContextValue } from '../types/oceanState'
+import type {
+  ComparisonStats,
+  Instrument,
+  InstrumentProfile,
+  OceanVariable,
+} from '../types/ocean'
+import { getTemperatureRange } from '../utils/temperatureField'
+
+const DEFAULT_DATE = MODEL_CONFIG.dates[MODEL_CONFIG.dates.length - 1]
+const DEPTH_DEBOUNCE_MS = 300
+
+export const OceanContext = createContext<OceanContextValue | null>(null)
+
+interface OceanProviderProps {
+  children: ReactNode
+}
+
+export function OceanProvider({ children }: OceanProviderProps) {
+  const [availableDates, setAvailableDates] = useState<string[]>(MODEL_CONFIG.dates)
+  const [selectedDate, setSelectedDate] = useState(DEFAULT_DATE)
+  const [selectedDepth, setSelectedDepth] = useState(100)
+  const [selectedVariable, setSelectedVariable] =
+    useState<OceanVariable>('temperature')
+  const [selectedInstrumentId, setSelectedInstrumentId] = useState<string | null>(
+    null,
+  )
+
+  const [oceanData, setOceanData] = useState<ApiTemperatureField | null>(null)
+  const [instruments, setInstruments] = useState<Instrument[]>([])
+  const [selectedInstrument, setSelectedInstrument] = useState<Instrument | null>(
+    null,
+  )
+  const [instrumentProfile, setInstrumentProfile] =
+    useState<InstrumentProfile | null>(null)
+  const [comparison, setComparison] = useState<ComparisonStats | null>(null)
+  const [observationTime, setObservationTime] = useState('')
+
+  const [isModelLoading, setIsModelLoading] = useState(false)
+  const [isInstrumentsLoading, setIsInstrumentsLoading] = useState(false)
+  const [isProfileLoading, setIsProfileLoading] = useState(false)
+  const [modelError, setModelError] = useState<string | null>(null)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [apiError, setApiError] = useState<string | null>(null)
+
+  const [colorScaleMin, setColorScaleMin] = useState(8)
+  const [colorScaleMax, setColorScaleMax] = useState(31)
+  const [refreshToken, setRefreshToken] = useState(0)
+
+  const selectedDepthRef = useRef(selectedDepth)
+  selectedDepthRef.current = selectedDepth
+
+  const debouncedDepth = useDebouncedValue(selectedDepth, DEPTH_DEBOUNCE_MS)
+  const apiDepth = useMemo(() => snapDepth(debouncedDepth), [debouncedDepth])
+
+  const dateIndex = useMemo(() => {
+    const idx = availableDates.indexOf(selectedDate)
+    return idx >= 0 ? idx : availableDates.length - 1
+  }, [availableDates, selectedDate])
+
+  const temperatureRange = useMemo(
+    () => (oceanData ? getTemperatureRange(oceanData) : null),
+    [oceanData],
+  )
+
+  useEffect(() => {
+    if (temperatureRange) {
+      setColorScaleMin(temperatureRange.min)
+      setColorScaleMax(temperatureRange.max)
+    }
+  }, [temperatureRange])
+
+  const setDateIndex = useCallback(
+    (index: number) => {
+      const date = availableDates[index]
+      if (date) setSelectedDate(date)
+    },
+    [availableDates],
+  )
+
+  const setColorScale = useCallback((min: number, max: number) => {
+    setColorScaleMin(min)
+    setColorScaleMax(max)
+  }, [])
+
+  const selectInstrument = useCallback((id: string) => {
+    setSelectedInstrumentId(id)
+  }, [])
+
+  const clearInstrumentSelection = useCallback(() => {
+    setSelectedInstrumentId(null)
+  }, [])
+
+  const retryOceanData = useCallback(() => {
+    setApiError(null)
+    setModelError(null)
+    setRefreshToken((t) => t + 1)
+  }, [])
+
+  // Model metadata — populate available dates from API
+  useEffect(() => {
+    const controller = new AbortController()
+    getModelMetadata(controller.signal)
+      .then((metadata) => {
+        const dates = metadata.dates.map((d) => toDateParam(d))
+        if (dates.length > 0) {
+          setAvailableDates(dates)
+          setSelectedDate((prev) => (dates.includes(prev) ? prev : dates[dates.length - 1]))
+        }
+      })
+      .catch((error: unknown) => {
+        if (isAbortError(error)) return
+        console.error('[Ocean3D] Failed to load model metadata:', error)
+      })
+    return () => controller.abort()
+  }, [refreshToken])
+
+  // Temperature field — debounced depth + selected date
+  useEffect(() => {
+    const controller = new AbortController()
+    setIsModelLoading(true)
+    setModelError(null)
+
+    getTemperature(apiDepth, selectedDate, controller.signal)
+      .then((field) => {
+        if (controller.signal.aborted) return
+        setOceanData(field)
+        setApiError(null)
+      })
+      .catch((error: unknown) => {
+        if (isAbortError(error) || controller.signal.aborted) return
+        console.error('[Ocean3D] Failed to load temperature field:', error)
+        const message = 'Unable to load ocean data.'
+        setModelError(message)
+        setApiError(message)
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsModelLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [apiDepth, selectedDate, refreshToken])
+
+  // Instruments — refetch when date changes
+  useEffect(() => {
+    const controller = new AbortController()
+    setIsInstrumentsLoading(true)
+
+    getInstruments(selectedDate, controller.signal)
+      .then((apiInstruments) => {
+        if (controller.signal.aborted) return
+        const depth = selectedDepthRef.current
+        setInstruments(
+          apiInstruments.map((item) => mapInstrumentSummary(item, depth)),
+        )
+        setApiError(null)
+      })
+      .catch((error: unknown) => {
+        if (isAbortError(error) || controller.signal.aborted) return
+        console.error('[Ocean3D] Failed to load instruments:', error)
+        setApiError('Unable to load ocean data.')
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsInstrumentsLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [selectedDate, refreshToken])
+
+  // Sync marker depth locally without refetching
+  useEffect(() => {
+    setInstruments((prev) =>
+      prev.map((inst) => ({ ...inst, currentDepth: selectedDepth })),
+    )
+    setSelectedInstrument((prev) =>
+      prev ? { ...prev, currentDepth: selectedDepth } : prev,
+    )
+  }, [selectedDepth])
+
+  // Instrument detail + profile when selection or date changes
+  useEffect(() => {
+    if (!selectedInstrumentId) {
+      setSelectedInstrument(null)
+      setInstrumentProfile(null)
+      setComparison(null)
+      setObservationTime('')
+      setProfileError(null)
+      setIsProfileLoading(false)
+      return
+    }
+
+    const controller = new AbortController()
+    const requestedId = selectedInstrumentId
+
+    setIsProfileLoading(true)
+    setProfileError(null)
+    setSelectedInstrument(null)
+    setInstrumentProfile(null)
+    setComparison(null)
+    setObservationTime('')
+
+    Promise.all([
+      getInstrument(requestedId, selectedDate, controller.signal),
+      getInstrumentProfile(requestedId, selectedDate, controller.signal),
+    ])
+      .then(([instrumentData, profileData]) => {
+        if (controller.signal.aborted) return
+        const depth = selectedDepthRef.current
+        const mappedInstrument = mapInstrument(instrumentData, depth)
+        const mappedProfile = mapInstrumentProfile(profileData)
+
+        setSelectedInstrument(mappedInstrument)
+        setInstrumentProfile(mappedProfile)
+        setComparison(getComparisonAtDepth(mappedProfile, depth))
+        setObservationTime(formatObservationTime(instrumentData.last_updated))
+        setApiError(null)
+      })
+      .catch((error: unknown) => {
+        if (isAbortError(error) || controller.signal.aborted) return
+        console.error('[Ocean3D] Failed to load instrument observation:', error)
+        setSelectedInstrument(null)
+        setInstrumentProfile(null)
+        setComparison(null)
+        setObservationTime('')
+        setProfileError('Unable to load observation')
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsProfileLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [selectedInstrumentId, selectedDate, refreshToken])
+
+  // Recompute comparison when depth changes (profile already loaded)
+  useEffect(() => {
+    if (instrumentProfile) {
+      setComparison(getComparisonAtDepth(instrumentProfile, selectedDepth))
+    }
+  }, [instrumentProfile, selectedDepth])
+
+  const isLoading = isModelLoading || isInstrumentsLoading || isProfileLoading
+  const error = apiError ?? modelError
+
+  const value = useMemo<OceanContextValue>(
+    () => ({
+      availableDates,
+      selectedDate,
+      setSelectedDate,
+      dateIndex,
+      setDateIndex,
+      selectedDepth,
+      setSelectedDepth,
+      selectedVariable,
+      setSelectedVariable,
+      selectedInstrumentId,
+      selectedInstrument,
+      selectInstrument,
+      clearInstrumentSelection,
+      oceanData,
+      instruments,
+      instrumentProfile,
+      comparison,
+      observationTime,
+      isModelLoading,
+      isInstrumentsLoading,
+      isProfileLoading,
+      isLoading,
+      modelError,
+      profileError,
+      apiError,
+      error,
+      retryOceanData,
+      colorScaleMin,
+      colorScaleMax,
+      setColorScale,
+    }),
+    [
+      availableDates,
+      selectedDate,
+      dateIndex,
+      setDateIndex,
+      selectedDepth,
+      selectedVariable,
+      selectedInstrumentId,
+      selectedInstrument,
+      selectInstrument,
+      clearInstrumentSelection,
+      oceanData,
+      instruments,
+      instrumentProfile,
+      comparison,
+      observationTime,
+      isModelLoading,
+      isInstrumentsLoading,
+      isProfileLoading,
+      isLoading,
+      modelError,
+      profileError,
+      apiError,
+      error,
+      retryOceanData,
+      colorScaleMin,
+      colorScaleMax,
+      setColorScale,
+    ],
+  )
+
+  return <OceanContext.Provider value={value}>{children}</OceanContext.Provider>
+}

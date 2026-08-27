@@ -1,8 +1,9 @@
 import { Pause, Play, SkipBack, SkipForward } from 'lucide-react'
-import { MODEL_CONFIG, formatDisplayDate, formatShortDate } from '../../data/mockModel'
+import { formatDisplayDate, formatShortDate } from '../../data/mockModel'
 import { Slider } from '../common/Slider'
 
 interface TimelineProps {
+  dates: string[]
   currentDate: string
   dateIndex: number
   isPlaying: boolean
@@ -13,6 +14,7 @@ interface TimelineProps {
 }
 
 export function Timeline({
+  dates,
   currentDate,
   dateIndex,
   isPlaying,
@@ -21,7 +23,7 @@ export function Timeline({
   onPrevious,
   onNext,
 }: TimelineProps) {
-  const maxIndex = MODEL_CONFIG.dates.length - 1
+  const maxIndex = dates.length - 1
 
   return (
     <div className="timeline">
@@ -43,8 +45,8 @@ export function Timeline({
           step={1}
           value={dateIndex}
           onChange={onDateIndexChange}
-          ticks={MODEL_CONFIG.dates.map((_, i) => i)}
-          formatTick={(i) => formatShortDate(MODEL_CONFIG.dates[i])}
+          ticks={dates.map((_, i) => i)}
+          formatTick={(i) => formatShortDate(dates[i])}
           ariaLabel="Timeline"
         />
       </div>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useMemo } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import type { ApiTemperatureField } from '../../types/api'
@@ -6,10 +6,12 @@ import type { Instrument, OceanVariable } from '../../types/ocean'
 import { DEPTH_TICKS, formatDisplayDate } from '../../data/mockModel'
 import {
   applyTemperatureFieldToGeometry,
+  getTemperatureRange,
   sampleTemperatureField,
 } from '../../utils/temperatureField'
-import { temperatureToColor } from '../../utils/temperatureColor'
+import { normalizedToColor, temperatureToColor } from '../../utils/temperatureColor'
 import { InstrumentMarker } from './InstrumentMarker'
+import { TemperatureColorbar } from './TemperatureColorbar'
 import { VisualizationToolbar, type ViewMode } from './VisualizationToolbar'
 
 interface OceanViewerProps {
@@ -83,6 +85,11 @@ export function OceanViewer({
   const variableLabel =
     selectedVariable.charAt(0).toUpperCase() + selectedVariable.slice(1)
 
+  const temperatureRange = useMemo(
+    () => (temperatureField ? getTemperatureRange(temperatureField) : null),
+    [temperatureField],
+  )
+
   const updateOceanAppearance = useCallback(() => {
     const refs = sceneRef.current
     if (!refs) return
@@ -101,27 +108,35 @@ export function OceanViewer({
       -4 * verticalExaggeration * 0.5 +
       (selectedDepth / 1000) * 4 * verticalExaggeration * 0.5
 
-    if (temperatureField) {
+    if (temperatureField && temperatureRange) {
       const centerLat =
         (temperatureField.bounds.lat_min + temperatureField.bounds.lat_max) / 2
       const centerLon =
         (temperatureField.bounds.lon_min + temperatureField.bounds.lon_max) / 2
       const depthTemp = sampleTemperatureField(temperatureField, centerLat, centerLon)
-      sliceMat.color = temperatureToColor(depthTemp)
+      sliceMat.color = temperatureToColor(
+        depthTemp,
+        temperatureRange.min,
+        temperatureRange.max,
+      )
     }
 
     refs.currents.visible = showCurrents
   }, [
     modelLayerEnabled, modelOpacity, verticalExaggeration, selectedDepth,
-    showCurrents, temperatureField,
+    showCurrents, temperatureField, temperatureRange,
   ])
 
   // Update vertex colors when the API temperature field changes — not in the render loop
   useEffect(() => {
     const refs = sceneRef.current
-    if (!refs || !temperatureField) return
-    applyTemperatureFieldToGeometry(refs.oceanMesh.geometry, temperatureField)
-  }, [temperatureField])
+    if (!refs || !temperatureField || !temperatureRange) return
+    applyTemperatureFieldToGeometry(
+      refs.oceanMesh.geometry,
+      temperatureField,
+      temperatureRange,
+    )
+  }, [temperatureField, temperatureRange])
 
   useEffect(() => {
     const host = canvasHostRef.current
@@ -161,7 +176,7 @@ export function OceanViewer({
     const oceanGeometry = new THREE.BoxGeometry(28, 8, 18, 14, 6, 10)
     const positions = oceanGeometry.attributes.position
     const colors: number[] = []
-    const placeholder = temperatureToColor(16)
+    const placeholder = normalizedToColor(0.5)
     for (let i = 0; i < positions.count; i++) {
       colors.push(placeholder.r, placeholder.g, placeholder.b)
     }
@@ -221,7 +236,8 @@ export function OceanViewer({
 
     const pendingField = temperatureFieldRef.current
     if (pendingField) {
-      applyTemperatureFieldToGeometry(oceanMesh.geometry, pendingField)
+      const pendingRange = getTemperatureRange(pendingField)
+      applyTemperatureFieldToGeometry(oceanMesh.geometry, pendingField, pendingRange)
     }
 
     const animate = () => {
@@ -283,7 +299,7 @@ export function OceanViewer({
       {(modelLoading || modelError) && (
         <div className="ocean-viewer__overlay ocean-viewer__overlay--status">
           <div className="view-label view-label--status">
-            {modelLoading ? 'Loading ocean field...' : modelError}
+            {modelLoading ? 'LOADING DATA...' : modelError}
           </div>
         </div>
       )}
@@ -302,6 +318,14 @@ export function OceanViewer({
           ))}
         </div>
       </div>
+      {temperatureRange && modelLayerEnabled && (
+        <div className="ocean-viewer__overlay ocean-viewer__overlay--colorbar">
+          <TemperatureColorbar
+            range={temperatureRange}
+            unit={temperatureField?.unit ?? '°C'}
+          />
+        </div>
+      )}
       <div className="ocean-viewer__overlay ocean-viewer__overlay--toolbar">
         <VisualizationToolbar
           viewMode={viewMode}

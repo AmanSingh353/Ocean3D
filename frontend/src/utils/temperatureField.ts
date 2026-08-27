@@ -1,6 +1,9 @@
 import * as THREE from 'three'
 import type { ApiBounds, ApiTemperatureField } from '../types/api'
-import { temperatureToColor } from './temperatureColor'
+import {
+  temperatureToColor,
+  type TemperatureRange,
+} from './temperatureColor'
 
 /** Map Three.js scene X/Z to geographic coordinates within API bounds. */
 export function sceneToLatLon(
@@ -17,6 +20,30 @@ export function sceneToLatLon(
     bounds.lat_max -
     ((z + sceneDepth / 2) / sceneDepth) * (bounds.lat_max - bounds.lat_min)
   return { lat, lon }
+}
+
+/** Compute min/max from the API grid, ignoring null/NaN values. */
+export function getTemperatureRange(field: ApiTemperatureField): TemperatureRange {
+  let min = Infinity
+  let max = -Infinity
+
+  for (const row of field.values) {
+    for (const value of row) {
+      if (value == null || Number.isNaN(value)) continue
+      if (value < min) min = value
+      if (value > max) max = value
+    }
+  }
+
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    return { min: 0, max: 1 }
+  }
+
+  if (min === max) {
+    return { min: min - 0.5, max: max + 0.5 }
+  }
+
+  return { min, max }
 }
 
 /** Bilinear sample of the API temperature grid at a lat/lon point. */
@@ -62,6 +89,7 @@ export function sampleTemperatureField(
 export function applyTemperatureFieldToGeometry(
   geometry: THREE.BufferGeometry,
   field: ApiTemperatureField,
+  range: TemperatureRange,
 ): void {
   const positions = geometry.attributes.position
   const colors = geometry.attributes.color as THREE.BufferAttribute
@@ -71,7 +99,7 @@ export function applyTemperatureFieldToGeometry(
     const z = positions.getZ(i)
     const { lat, lon } = sceneToLatLon(x, z, field.bounds)
     const temp = sampleTemperatureField(field, lat, lon)
-    const c = temperatureToColor(temp)
+    const c = temperatureToColor(temp, range.min, range.max)
     colors.setXYZ(i, c.r, c.g, c.b)
   }
   colors.needsUpdate = true
