@@ -170,11 +170,14 @@ function App() {
     setComparison(null)
     setObservationTime('')
 
+    const requestedId = selectedInstrumentId
+
     Promise.all([
-      getInstrument(selectedInstrumentId, currentDate, controller.signal),
-      getInstrumentProfile(selectedInstrumentId, currentDate, controller.signal),
+      getInstrument(requestedId, currentDate, controller.signal),
+      getInstrumentProfile(requestedId, currentDate, controller.signal),
     ])
       .then(([instrumentData, profileData]) => {
+        if (controller.signal.aborted) return
         const depth = selectedDepthRef.current
         const mappedInstrument = mapInstrument(instrumentData, depth)
         const mappedProfile = mapInstrumentProfile(profileData)
@@ -186,7 +189,7 @@ function App() {
         setApiError(null)
       })
       .catch((error: unknown) => {
-        if (isAbortError(error)) return
+        if (isAbortError(error) || controller.signal.aborted) return
         setSelectedInstrument(null)
         setProfile(null)
         setComparison(null)
@@ -304,6 +307,7 @@ function App() {
         }
         observation={
           <ObservationPanel
+            selectedInstrumentId={selectedInstrumentId}
             selectedInstrument={selectedInstrument}
             profile={profile}
             comparison={comparison}

@@ -26,10 +26,6 @@ export function InstrumentDetails({
         <div className="platform-badge">{typeLabel}</div>
         <div className="platform-name">{instrument.instrumentLabel}</div>
         <div className="detail-row">
-          <span className="detail-label">Platform type:</span>
-          <span className="detail-value">{instrument.platformType}</span>
-        </div>
-        <div className="detail-row">
           <span className="detail-label">Status:</span>
           <span className="detail-value detail-value--active">{instrument.status}</span>
         </div>

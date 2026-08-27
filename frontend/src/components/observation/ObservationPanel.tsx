@@ -2,6 +2,7 @@ import type { Instrument, InstrumentProfile, ComparisonStats } from '../../types
 import { InstrumentDetails } from './InstrumentDetails'
 
 interface ObservationPanelProps {
+  selectedInstrumentId: string | null
   selectedInstrument: Instrument | null
   profile: InstrumentProfile | null
   comparison: ComparisonStats | null
@@ -11,6 +12,7 @@ interface ObservationPanelProps {
 }
 
 export function ObservationPanel({
+  selectedInstrumentId,
   selectedInstrument,
   profile,
   comparison,
@@ -18,6 +20,15 @@ export function ObservationPanel({
   profileLoading,
   profileError,
 }: ObservationPanelProps) {
+  const showEmpty =
+    !selectedInstrumentId && !profileLoading && !profileError
+  const showDetails =
+    !profileLoading &&
+    !profileError &&
+    selectedInstrument !== null &&
+    profile !== null &&
+    comparison !== null
+
   return (
     <div className="observation-panel">
       <h2 className="panel-title">OBSERVATION</h2>
@@ -31,13 +42,13 @@ export function ObservationPanel({
           <p className="observation-empty__title">Unable to load observation</p>
         </div>
       )}
-      {!profileLoading && !profileError && (!selectedInstrument || !profile || !comparison) ? (
+      {showEmpty ? (
         <div className="observation-empty">
           <p className="observation-empty__title">Select an Argo Float or Glider</p>
           <p className="observation-empty__hint">Click a platform in the ocean view to inspect its profile.</p>
         </div>
       ) : null}
-      {!profileLoading && !profileError && selectedInstrument && profile && comparison ? (
+      {showDetails ? (
         <InstrumentDetails
           instrument={selectedInstrument}
           profile={profile}
