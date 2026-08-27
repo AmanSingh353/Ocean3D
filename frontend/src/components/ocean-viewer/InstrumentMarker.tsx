@@ -1,5 +1,5 @@
 import type { Instrument } from '../../types/ocean'
-import { latLonToScenePercent } from '../../data/mockInstruments'
+import { latLonToScenePercent } from '../../utils/geo'
 
 interface InstrumentMarkerProps {
   instrument: Instrument

@@ -1,5 +1,11 @@
 import { useState } from 'react'
 import { Modal } from '../common/Modal'
+import {
+  MAX_TEMP,
+  MIN_TEMP,
+  TEMP_GRADIENT_CSS,
+  TEMP_LEGEND_TICKS,
+} from '../../utils/temperatureColor'
 
 interface ColorScaleControlProps {
   min: number
@@ -31,8 +37,15 @@ export function ColorScaleControl({ min, max, onApply }: ColorScaleControlProps)
     <div className="control-block">
       <label className="control-label">TEMPERATURE SCALE</label>
       <div className="color-scale">
-        <div className="color-scale__gradient" />
-        <div className="color-scale__labels"><span>{min}°C</span><span>{max}°C</span></div>
+        <div
+          className="color-scale__gradient"
+          style={{ background: TEMP_GRADIENT_CSS }}
+        />
+        <div className="color-scale__labels color-scale__labels--ticks">
+          {TEMP_LEGEND_TICKS.map((tick) => (
+            <span key={tick}>{tick}°C</span>
+          ))}
+        </div>
       </div>
       <button type="button" className="btn btn--ghost" onClick={openModal}>Customize</button>
       <Modal
@@ -54,6 +67,9 @@ export function ColorScaleControl({ min, max, onApply }: ColorScaleControlProps)
           <label htmlFor="scale-max">Maximum</label>
           <input id="scale-max" type="number" className="text-input" value={draftMax} onChange={(e) => setDraftMax(e.target.value)} />
         </div>
+        <p className="control-hint">
+          Visualization uses fixed range {MIN_TEMP}–{MAX_TEMP}°C for consistent depth/date comparison.
+        </p>
         <div className="modal-field">
           <label htmlFor="scale-type">Scale</label>
           <select id="scale-type" className="select-input" defaultValue="linear">

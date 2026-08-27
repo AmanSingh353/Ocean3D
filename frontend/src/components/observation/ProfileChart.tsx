@@ -5,9 +5,12 @@ import type { ProfilePoint } from '../../types/ocean'
 
 interface ProfileChartProps {
   data: ProfilePoint[]
+  maxDepth?: number
 }
 
-export function ProfileChart({ data }: ProfileChartProps) {
+export function ProfileChart({ data, maxDepth }: ProfileChartProps) {
+  const depthMax = maxDepth ?? Math.max(...data.map((p) => p.depth), 1000)
+
   return (
     <div className="profile-chart">
       <h4 className="subsection-title">Temperature Profile</h4>
@@ -23,7 +26,7 @@ export function ProfileChart({ data }: ProfileChartProps) {
             type="number"
             dataKey="depth"
             reversed
-            domain={[0, 1000]}
+            domain={[0, depthMax]}
             tick={{ fill: '#7896A5', fontSize: 10 }}
             label={{ value: 'Depth (m)', angle: -90, position: 'insideLeft', fill: '#7896A5', fontSize: 10 }}
           />

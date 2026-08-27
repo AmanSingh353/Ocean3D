@@ -480,15 +480,6 @@ button {
   height: 12px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: linear-gradient(
-    90deg,
-    #0a2a4a 0%,
-    #1565a0 20%,
-    #19bcd6 45%,
-    #48d5c3 65%,
-    #f5c842 82%,
-    #e85d3a 100%
-  );
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 8px var(--accent-glow-soft);
 }
 
@@ -499,6 +490,17 @@ button {
   font-size: 10px;
   font-family: var(--font-mono);
   color: var(--text-muted);
+}
+
+.color-scale__labels--ticks {
+  font-size: 9px;
+}
+
+.control-hint {
+  margin: 0 0 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
 }
 
 /* --------------------------------------------------------------------------

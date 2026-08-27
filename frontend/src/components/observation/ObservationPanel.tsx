@@ -23,12 +23,12 @@ export function ObservationPanel({
       <h2 className="panel-title">OBSERVATION</h2>
       {profileLoading && (
         <div className="observation-empty">
-          <p className="observation-empty__title">Loading profile...</p>
+          <p className="observation-empty__title">Loading observation...</p>
         </div>
       )}
       {profileError && !profileLoading && (
         <div className="observation-empty">
-          <p className="observation-empty__title">{profileError}</p>
+          <p className="observation-empty__title">Unable to load observation</p>
         </div>
       )}
       {!profileLoading && !profileError && (!selectedInstrument || !profile || !comparison) ? (

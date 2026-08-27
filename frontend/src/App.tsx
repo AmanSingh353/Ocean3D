@@ -94,7 +94,6 @@ function App() {
       })
       .catch((error: unknown) => {
         if (isAbortError(error)) return
-        setTemperatureField(null)
         const message =
           error instanceof Error &&
           error.message === 'Unable to connect to Ocean3D API'
@@ -166,6 +165,10 @@ function App() {
     const controller = new AbortController()
     setProfileLoading(true)
     setProfileError(null)
+    setSelectedInstrument(null)
+    setProfile(null)
+    setComparison(null)
+    setObservationTime('')
 
     Promise.all([
       getInstrument(selectedInstrumentId, currentDate, controller.signal),
@@ -188,7 +191,7 @@ function App() {
         setProfile(null)
         setComparison(null)
         setObservationTime('')
-        setProfileError('Unable to load instrument profile.')
+        setProfileError('Unable to load observation')
       })
       .finally(() => {
         if (!controller.signal.aborted) setProfileLoading(false)
@@ -286,8 +289,6 @@ function App() {
             showGliders={showGliders}
             showCurrents={showCurrents}
             verticalExaggeration={verticalExaggeration}
-            colorScaleMin={colorScaleMin}
-            colorScaleMax={colorScaleMax}
             selectedInstrumentId={selectedInstrumentId}
             instruments={markerInstruments}
             temperatureField={temperatureField}

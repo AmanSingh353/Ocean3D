@@ -4,6 +4,11 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import type { ApiTemperatureField } from '../../types/api'
 import type { Instrument, OceanVariable } from '../../types/ocean'
 import { DEPTH_TICKS, formatDisplayDate } from '../../data/mockModel'
+import {
+  applyTemperatureFieldToGeometry,
+  sampleTemperatureField,
+} from '../../utils/temperatureField'
+import { temperatureToColor } from '../../utils/temperatureColor'
 import { InstrumentMarker } from './InstrumentMarker'
 import { VisualizationToolbar, type ViewMode } from './VisualizationToolbar'
 
@@ -17,8 +22,6 @@ interface OceanViewerProps {
   showGliders: boolean
   showCurrents: boolean
   verticalExaggeration: number
-  colorScaleMin: number
-  colorScaleMax: number
   selectedInstrumentId: string | null
   instruments: Instrument[]
   temperatureField: ApiTemperatureField | null
@@ -32,17 +35,6 @@ interface OceanViewerProps {
   onFullscreen: () => void
 }
 
-function tempToColor(temp: number, min: number, max: number): THREE.Color {
-  const t = Math.max(0, Math.min(1, (temp - min) / (max - min)))
-  const color = new THREE.Color()
-  if (t < 0.2) color.setHSL(0.58, 0.9, 0.25 + t * 1.5)
-  else if (t < 0.4) color.setHSL(0.48, 0.85, 0.35 + (t - 0.2) * 0.8)
-  else if (t < 0.6) color.setHSL(0.33, 0.8, 0.4 + (t - 0.4) * 0.5)
-  else if (t < 0.8) color.setHSL(0.12, 0.85, 0.45 + (t - 0.6) * 0.3)
-  else color.setHSL(0.02, 0.9, 0.45 + (t - 0.8) * 0.2)
-  return color
-}
-
 function createIndiaOutline(): THREE.Vector2[] {
   return [
     new THREE.Vector2(-4, 6), new THREE.Vector2(-2, 8), new THREE.Vector2(0, 9),
@@ -51,44 +43,6 @@ function createIndiaOutline(): THREE.Vector2[] {
     new THREE.Vector2(-1, -1.5), new THREE.Vector2(-3, 0), new THREE.Vector2(-4.5, 2),
     new THREE.Vector2(-5, 4),
   ]
-}
-
-function sampleField(
-  field: ApiTemperatureField,
-  lat: number,
-  lon: number,
-): number {
-  const { latitudes, longitudes } = field.grid
-  const latClamped = Math.max(latitudes[0], Math.min(latitudes[latitudes.length - 1], lat))
-  const lonClamped = Math.max(longitudes[0], Math.min(longitudes[longitudes.length - 1], lon))
-
-  let latIdx = latitudes.findIndex((v) => v >= latClamped)
-  if (latIdx <= 0) latIdx = 1
-  let lonIdx = longitudes.findIndex((v) => v >= lonClamped)
-  if (lonIdx <= 0) lonIdx = 1
-
-  const lat0 = latitudes[latIdx - 1]
-  const lat1 = latitudes[latIdx]
-  const lon0 = longitudes[lonIdx - 1]
-  const lon1 = longitudes[lonIdx]
-
-  const latT = lat1 === lat0 ? 0 : (latClamped - lat0) / (lat1 - lat0)
-  const lonT = lon1 === lon0 ? 0 : (lonClamped - lon0) / (lon1 - lon0)
-
-  const v00 = field.values[latIdx - 1][lonIdx - 1]
-  const v01 = field.values[latIdx - 1][lonIdx]
-  const v10 = field.values[latIdx][lonIdx - 1]
-  const v11 = field.values[latIdx][lonIdx]
-
-  const top = v00 + lonT * (v01 - v00)
-  const bottom = v10 + lonT * (v11 - v10)
-  return top + latT * (bottom - top)
-}
-
-function sceneToLatLon(x: number, z: number): { lat: number; lon: number } {
-  const lon = 65 + ((x + 14) / 28) * 20
-  const lat = 20 - ((z + 9) / 18) * 15
-  return { lat, lon }
 }
 
 export function OceanViewer({
@@ -101,8 +55,6 @@ export function OceanViewer({
   showGliders,
   showCurrents,
   verticalExaggeration,
-  colorScaleMin,
-  colorScaleMax,
   selectedInstrumentId,
   instruments,
   temperatureField,
@@ -116,6 +68,9 @@ export function OceanViewer({
   onFullscreen,
 }: OceanViewerProps) {
   const canvasHostRef = useRef<HTMLDivElement>(null)
+  const temperatureFieldRef = useRef<ApiTemperatureField | null>(temperatureField)
+  temperatureFieldRef.current = temperatureField
+
   const sceneRef = useRef<{
     camera: THREE.PerspectiveCamera
     renderer: THREE.WebGLRenderer
@@ -146,38 +101,27 @@ export function OceanViewer({
       -4 * verticalExaggeration * 0.5 +
       (selectedDepth / 1000) * 4 * verticalExaggeration * 0.5
 
-    const depthTemp = temperatureField
-      ? sampleField(
-          temperatureField,
-          (temperatureField.bounds.lat_min + temperatureField.bounds.lat_max) / 2,
-          (temperatureField.bounds.lon_min + temperatureField.bounds.lon_max) / 2,
-        )
-      : colorScaleMax - (selectedDepth / 1000) * (colorScaleMax - colorScaleMin) * 0.6
-    sliceMat.color = tempToColor(depthTemp, colorScaleMin, colorScaleMax)
+    if (temperatureField) {
+      const centerLat =
+        (temperatureField.bounds.lat_min + temperatureField.bounds.lat_max) / 2
+      const centerLon =
+        (temperatureField.bounds.lon_min + temperatureField.bounds.lon_max) / 2
+      const depthTemp = sampleTemperatureField(temperatureField, centerLat, centerLon)
+      sliceMat.color = temperatureToColor(depthTemp)
+    }
+
     refs.currents.visible = showCurrents
   }, [
     modelLayerEnabled, modelOpacity, verticalExaggeration, selectedDepth,
-    colorScaleMin, colorScaleMax, showCurrents, temperatureField,
+    showCurrents, temperatureField,
   ])
 
+  // Update vertex colors when the API temperature field changes — not in the render loop
   useEffect(() => {
     const refs = sceneRef.current
     if (!refs || !temperatureField) return
-
-    const geometry = refs.oceanMesh.geometry as THREE.BoxGeometry
-    const positions = geometry.attributes.position
-    const colors = geometry.attributes.color as THREE.BufferAttribute
-
-    for (let i = 0; i < positions.count; i++) {
-      const x = positions.getX(i)
-      const z = positions.getZ(i)
-      const { lat, lon } = sceneToLatLon(x, z)
-      const temp = sampleField(temperatureField, lat, lon)
-      const c = tempToColor(temp, colorScaleMin, colorScaleMax)
-      colors.setXYZ(i, c.r, c.g, c.b)
-    }
-    colors.needsUpdate = true
-  }, [temperatureField, colorScaleMin, colorScaleMax])
+    applyTemperatureFieldToGeometry(refs.oceanMesh.geometry, temperatureField)
+  }, [temperatureField])
 
   useEffect(() => {
     const host = canvasHostRef.current
@@ -217,11 +161,9 @@ export function OceanViewer({
     const oceanGeometry = new THREE.BoxGeometry(28, 8, 18, 14, 6, 10)
     const positions = oceanGeometry.attributes.position
     const colors: number[] = []
+    const placeholder = temperatureToColor(16)
     for (let i = 0; i < positions.count; i++) {
-      const y = positions.getY(i)
-      const temp = colorScaleMax - ((y + 4) / 8) * (colorScaleMax - colorScaleMin)
-      const c = tempToColor(temp, colorScaleMin, colorScaleMax)
-      colors.push(c.r, c.g, c.b)
+      colors.push(placeholder.r, placeholder.g, placeholder.b)
     }
     oceanGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
 
@@ -277,6 +219,11 @@ export function OceanViewer({
 
     sceneRef.current = { camera, renderer, controls, oceanMesh, depthSlice, currents }
 
+    const pendingField = temperatureFieldRef.current
+    if (pendingField) {
+      applyTemperatureFieldToGeometry(oceanMesh.geometry, pendingField)
+    }
+
     const animate = () => {
       if (!mounted) return
       controls.update()
@@ -306,7 +253,7 @@ export function OceanViewer({
       }
       sceneRef.current = null
     }
-  }, [colorScaleMin, colorScaleMax])
+  }, [])
 
   useEffect(() => { updateOceanAppearance() }, [updateOceanAppearance])
 
