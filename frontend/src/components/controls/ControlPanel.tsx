@@ -4,6 +4,7 @@ import { DepthControl } from './DepthControl'
 import { LayerControls } from './LayerControls'
 import { VisualizationControls } from './VisualizationControls'
 import { ColorScaleControl } from './ColorScaleControl'
+import { CurrentScaleControl } from './CurrentScaleControl'
 
 interface ControlPanelProps {
   selectedVariable: OceanVariable
@@ -53,7 +54,11 @@ export function ControlPanel(props: ControlPanelProps) {
         onVerticalExaggerationChange={props.onVerticalExaggerationChange}
       />
       <div className="control-divider" />
-      <ColorScaleControl min={props.colorScaleMin} max={props.colorScaleMax} onApply={props.onColorScaleApply} />
+      {props.selectedVariable === 'temperature' ? (
+        <ColorScaleControl min={props.colorScaleMin} max={props.colorScaleMax} onApply={props.onColorScaleApply} />
+      ) : (
+        <CurrentScaleControl />
+      )}
     </div>
   )
 }

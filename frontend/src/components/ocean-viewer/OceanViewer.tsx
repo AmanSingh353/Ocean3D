@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import type { ApiTemperatureField } from '../../types/api'
 import type { Instrument, OceanVariable } from '../../types/ocean'
-import { DEPTH_TICKS, formatDisplayDate } from '../../data/mockModel'
+import { DEPTH_TICKS, VARIABLE_OPTIONS, formatDisplayDate } from '../../data/mockModel'
 import {
   applyTemperatureFieldToGeometry,
   getTemperatureRange,
@@ -11,6 +11,7 @@ import {
 } from '../../utils/temperatureField'
 import { normalizedToColor, temperatureToColor } from '../../utils/temperatureColor'
 import { InstrumentMarker } from './InstrumentMarker'
+import { CurrentColorbar } from './CurrentColorbar'
 import { TemperatureColorbar } from './TemperatureColorbar'
 import { VisualizationToolbar, type ViewMode } from './VisualizationToolbar'
 
@@ -82,8 +83,11 @@ export function OceanViewer({
     currents: THREE.Group
   } | null>(null)
 
-  const variableLabel =
-    selectedVariable.charAt(0).toUpperCase() + selectedVariable.slice(1)
+  const isTemperatureMode = selectedVariable === 'temperature'
+  const isCurrentMode = selectedVariable === 'current'
+
+  const variableMeta = VARIABLE_OPTIONS.find((v) => v.value === selectedVariable)
+  const variableLabel = variableMeta?.label ?? 'Temperature'
 
   const temperatureRange = useMemo(
     () => (temperatureField ? getTemperatureRange(temperatureField) : null),
@@ -94,21 +98,23 @@ export function OceanViewer({
     const refs = sceneRef.current
     if (!refs) return
 
-    const opacity = modelLayerEnabled ? modelOpacity / 100 : 0
-    const mat = refs.oceanMesh.material as THREE.MeshPhongMaterial
-    mat.opacity = opacity
-    mat.visible = opacity > 0
+    const baseOpacity = modelLayerEnabled ? modelOpacity / 100 : 0
+    const effectiveOpacity = isCurrentMode ? baseOpacity * 0.2 : baseOpacity
 
-    refs.depthSlice.visible = modelLayerEnabled && opacity > 0
+    const mat = refs.oceanMesh.material as THREE.MeshPhongMaterial
+    mat.opacity = effectiveOpacity
+    mat.visible = effectiveOpacity > 0
+
+    refs.depthSlice.visible = modelLayerEnabled && baseOpacity > 0 && isTemperatureMode
     const sliceMat = refs.depthSlice.material as THREE.MeshBasicMaterial
-    sliceMat.opacity = Math.min(1, opacity + 0.15)
+    sliceMat.opacity = isTemperatureMode ? Math.min(1, baseOpacity + 0.15) : 0
 
     refs.oceanMesh.scale.y = verticalExaggeration * 0.5
     refs.depthSlice.position.y =
       -4 * verticalExaggeration * 0.5 +
       (selectedDepth / 1000) * 4 * verticalExaggeration * 0.5
 
-    if (temperatureField && temperatureRange) {
+    if (temperatureField && temperatureRange && isTemperatureMode) {
       const centerLat =
         (temperatureField.bounds.lat_min + temperatureField.bounds.lat_max) / 2
       const centerLon =
@@ -122,9 +128,10 @@ export function OceanViewer({
     }
 
     refs.currents.visible = showCurrents
+    refs.currents.scale.setScalar(isCurrentMode && showCurrents ? 1.2 : 1)
   }, [
     modelLayerEnabled, modelOpacity, verticalExaggeration, selectedDepth,
-    showCurrents, temperatureField, temperatureRange,
+    showCurrents, temperatureField, temperatureRange, isTemperatureMode, isCurrentMode,
   ])
 
   // Update vertex colors when the API temperature field changes — not in the render loop
@@ -296,7 +303,7 @@ export function OceanViewer({
   return (
     <div className="ocean-viewer">
       <div className="ocean-viewer__canvas-host" ref={canvasHostRef} />
-      {(modelLoading || modelError) && (
+      {(modelLoading || modelError) && isTemperatureMode && (
         <div className="ocean-viewer__overlay ocean-viewer__overlay--status">
           <div className="view-label view-label--status">
             {modelLoading ? 'LOADING DATA...' : modelError}
@@ -318,12 +325,17 @@ export function OceanViewer({
           ))}
         </div>
       </div>
-      {temperatureRange && modelLayerEnabled && (
+      {isTemperatureMode && temperatureRange && modelLayerEnabled && (
         <div className="ocean-viewer__overlay ocean-viewer__overlay--colorbar">
           <TemperatureColorbar
             range={temperatureRange}
             unit={temperatureField?.unit ?? '°C'}
           />
+        </div>
+      )}
+      {isCurrentMode && (
+        <div className="ocean-viewer__overlay ocean-viewer__overlay--colorbar">
+          <CurrentColorbar unit="m/s" />
         </div>
       )}
       <div className="ocean-viewer__overlay ocean-viewer__overlay--toolbar">

@@ -20,8 +20,7 @@ export const VARIABLE_OPTIONS: {
   unit: string
 }[] = [
   { value: 'temperature', label: 'Temperature', unit: '°C' },
-  { value: 'salinity', label: 'Salinity', unit: 'PSU' },
-  { value: 'chlorophyll', label: 'Chlorophyll', unit: 'mg/m³' },
+  { value: 'current', label: 'Current', unit: 'm/s' },
 ]
 
 export const DEPTH_TICKS = [0, 100, 200, 500, 1000]
