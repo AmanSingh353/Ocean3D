@@ -6,6 +6,7 @@ import {
   OCEAN_BASE_VERTEX_RGB,
   type GeoBounds,
 } from './geoProjection'
+import { createBoundsQuadGeometry } from './geoJsonMap'
 
 /**
  * Model visualization grid spanning the full geographic view domain.
@@ -63,21 +64,11 @@ export function createModelSurfaceGeometry(
   return createViewSurfaceGeometry(viewBounds, segmentsX, segmentsZ)
 }
 
-/** Full-view dark ocean base plane. */
+/** Full-view dark ocean base plane aligned to geographic corners. */
 export function createOceanBaseGeometry(
   viewBounds: GeoBounds = INDIAN_OCEAN_VIEW_BOUNDS,
 ): THREE.BufferGeometry {
-  const sw = latLonToSceneXZ(viewBounds.lat_min, viewBounds.lon_min, viewBounds)
-  const ne = latLonToSceneXZ(viewBounds.lat_max, viewBounds.lon_max, viewBounds)
-  const width = Math.abs(ne.x - sw.x)
-  const depth = Math.abs(ne.z - sw.z)
-  const centerX = (sw.x + ne.x) / 2
-  const centerZ = (sw.z + ne.z) / 2
-
-  const geometry = new THREE.PlaneGeometry(width, depth, 1, 1)
-  geometry.rotateX(-Math.PI / 2)
-  geometry.translate(centerX, 0, centerZ)
-  return geometry
+  return createBoundsQuadGeometry(viewBounds, -0.01)
 }
 
 /** Depth slice plane sized to model data bounds. */
@@ -86,14 +77,17 @@ export function createDepthSliceGeometry(
   viewBounds: GeoBounds = INDIAN_OCEAN_VIEW_BOUNDS,
 ): THREE.BufferGeometry {
   const sw = latLonToSceneXZ(dataBounds.lat_min, dataBounds.lon_min, viewBounds)
+  const se = latLonToSceneXZ(dataBounds.lat_min, dataBounds.lon_max, viewBounds)
   const ne = latLonToSceneXZ(dataBounds.lat_max, dataBounds.lon_max, viewBounds)
-  const width = Math.abs(ne.x - sw.x)
-  const depth = Math.abs(ne.z - sw.z)
-  const centerX = (sw.x + ne.x) / 2
-  const centerZ = (sw.z + ne.z) / 2
+  const nw = latLonToSceneXZ(dataBounds.lat_max, dataBounds.lon_min, viewBounds)
 
-  const geometry = new THREE.PlaneGeometry(width, depth, 1, 1)
-  geometry.rotateX(-Math.PI / 2)
-  geometry.translate(centerX, 0, centerZ)
+  const positions = new Float32Array([
+    sw.x, 0, sw.z, se.x, 0, se.z, nw.x, 0, nw.z,
+    se.x, 0, se.z, ne.x, 0, ne.z, nw.x, 0, nw.z,
+  ])
+
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+  geometry.computeVertexNormals()
   return geometry
 }

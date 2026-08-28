@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import type { ApiCurrentField } from '../types/api'
 import { DEFAULT_REGION } from '../data/defaults'
-import { latLonToSceneXZ, INDIAN_OCEAN_VIEW_BOUNDS } from './geoProjection'
+import { latLonToSceneXZ, GEO_REFERENCE_Y, INDIAN_OCEAN_VIEW_BOUNDS } from './geoProjection'
 import { sceneToLatLon } from './temperatureField'
 
 export interface CurrentSample {
@@ -133,7 +133,14 @@ export function applyCurrentFieldToGroup(
 
     const len = 1.2 + 2.8 * (magnitude / maxMag)
     group.add(
-      new THREE.ArrowHelper(dir, new THREE.Vector3(x, 0.3, z), len, 0x19bcd6, 0.5, 0.35),
+      new THREE.ArrowHelper(
+        dir,
+        new THREE.Vector3(x, GEO_REFERENCE_Y + 0.3, z),
+        len,
+        0x19bcd6,
+        0.5,
+        0.35,
+      ),
     )
   }
 }

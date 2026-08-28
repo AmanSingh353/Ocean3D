@@ -51,7 +51,9 @@ import {
 } from '../../utils/oceanGeometry'
 import {
   INDIAN_OCEAN_VIEW_BOUNDS,
+  GEO_REFERENCE_Y,
   latLonToSceneXZ,
+  latLonToSceneXYZ,
   projectSceneToScreen,
 } from '../../utils/geoProjection'
 
@@ -553,10 +555,15 @@ export function OceanViewer({
       if (markerFrame % 1 === 0) {
         const next: Record<string, MarkerScreenPosition> = {}
         for (const inst of instrumentsRef.current) {
-          const { x, z } = latLonToSceneXZ(inst.latitude, inst.longitude, INDIAN_OCEAN_VIEW_BOUNDS)
+          const { x, y, z } = latLonToSceneXYZ(
+            inst.latitude,
+            inst.longitude,
+            GEO_REFERENCE_Y + 0.35,
+            INDIAN_OCEAN_VIEW_BOUNDS,
+          )
           next[inst.id] = projectSceneToScreen(
             x,
-            0.35,
+            y,
             z,
             camera,
             host.clientWidth,

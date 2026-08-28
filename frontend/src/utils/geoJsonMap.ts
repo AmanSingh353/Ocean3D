@@ -1,84 +1,90 @@
 import * as THREE from 'three'
+import { ShapeUtils } from 'three/src/extras/ShapeUtils.js'
 import type {
   GeoJsonFeatureCollection,
   GeoJsonGeometry,
   Position,
 } from '../types/geojson'
 import {
+  GEO_REFERENCE_Y,
   INDIAN_OCEAN_VIEW_BOUNDS,
   latLonToSceneXZ,
   type GeoBounds,
 } from './geoProjection'
 
-function appendLineRing(
+/** Shared 2D map projection used by all geographic layers (X = lon, Y = lat → scene Z). */
+function ringToMapPoints(ring: Position[], viewBounds: GeoBounds): THREE.Vector2[] {
+  return ring.map(([lon, lat]) => {
+    const { x, z } = latLonToSceneXZ(lat, lon, viewBounds)
+    return new THREE.Vector2(x, z)
+  })
+}
+
+function pushMapLine(
   ring: Position[],
   positions: number[],
   viewBounds: GeoBounds,
-  elevation: number,
+  y: number,
 ): void {
   for (let i = 0; i < ring.length - 1; i++) {
     const [lon1, lat1] = ring[i]
     const [lon2, lat2] = ring[i + 1]
     const p1 = latLonToSceneXZ(lat1, lon1, viewBounds)
     const p2 = latLonToSceneXZ(lat2, lon2, viewBounds)
-    positions.push(p1.x, elevation, p1.z, p2.x, elevation, p2.z)
+    positions.push(p1.x, y, p1.z, p2.x, y, p2.z)
   }
 }
 
+/**
+ * Triangulate a GeoJSON polygon ring set directly in scene XZ space.
+ * Avoids ShapeGeometry + rotateX, which mirrored land north/south relative to coastlines.
+ */
 function polygonToGeometry(
   rings: Position[][],
   viewBounds: GeoBounds,
-  elevation: number,
+  y: number,
 ): THREE.BufferGeometry | null {
   const exterior = rings[0]
   if (!exterior || exterior.length < 4) return null
 
-  const shape = new THREE.Shape()
-  const [lon0, lat0] = exterior[0]
-  const start = latLonToSceneXZ(lat0, lon0, viewBounds)
-  shape.moveTo(start.x, start.z)
+  const contour = ringToMapPoints(exterior, viewBounds)
+  const holes = rings
+    .slice(1)
+    .filter((ring) => ring.length >= 4)
+    .map((ring) => ringToMapPoints(ring, viewBounds))
 
-  for (let i = 1; i < exterior.length; i++) {
-    const [lon, lat] = exterior[i]
-    const p = latLonToSceneXZ(lat, lon, viewBounds)
-    shape.lineTo(p.x, p.z)
-  }
+  const triangles = ShapeUtils.triangulateShape(contour, holes)
+  const vertices2d: THREE.Vector2[] = [...contour]
+  for (const hole of holes) vertices2d.push(...hole)
 
-  for (let h = 1; h < rings.length; h++) {
-    const ring = rings[h]
-    if (ring.length < 4) continue
-    const hole = new THREE.Path()
-    const [hlon0, hlat0] = ring[0]
-    const hStart = latLonToSceneXZ(hlat0, hlon0, viewBounds)
-    hole.moveTo(hStart.x, hStart.z)
-    for (let i = 1; i < ring.length; i++) {
-      const [lon, lat] = ring[i]
-      const p = latLonToSceneXZ(lat, lon, viewBounds)
-      hole.lineTo(p.x, p.z)
+  const positions: number[] = []
+  for (const [a, b, c] of triangles) {
+    for (const idx of [a, b, c]) {
+      const v = vertices2d[idx]
+      positions.push(v.x, y, v.y)
     }
-    shape.holes.push(hole)
   }
 
-  const geometry = new THREE.ShapeGeometry(shape)
-  geometry.rotateX(-Math.PI / 2)
-  geometry.translate(0, elevation, 0)
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.computeVertexNormals()
   return geometry
 }
 
 function collectLandGeometries(
   geometry: GeoJsonGeometry,
   viewBounds: GeoBounds,
-  elevation: number,
+  y: number,
   out: THREE.BufferGeometry[],
 ): void {
   if (geometry.type === 'Polygon') {
-    const g = polygonToGeometry(geometry.coordinates, viewBounds, elevation)
+    const g = polygonToGeometry(geometry.coordinates, viewBounds, y)
     if (g) out.push(g)
     return
   }
   if (geometry.type === 'MultiPolygon') {
     for (const poly of geometry.coordinates) {
-      const g = polygonToGeometry(poly, viewBounds, elevation)
+      const g = polygonToGeometry(poly, viewBounds, y)
       if (g) out.push(g)
     }
   }
@@ -88,28 +94,28 @@ function collectCoastlinePositions(
   geometry: GeoJsonGeometry,
   positions: number[],
   viewBounds: GeoBounds,
-  elevation: number,
+  y: number,
 ): void {
   if (geometry.type === 'LineString') {
-    appendLineRing(geometry.coordinates, positions, viewBounds, elevation)
+    pushMapLine(geometry.coordinates, positions, viewBounds, y)
     return
   }
   if (geometry.type === 'MultiLineString') {
     for (const line of geometry.coordinates) {
-      appendLineRing(line, positions, viewBounds, elevation)
+      pushMapLine(line, positions, viewBounds, y)
     }
     return
   }
   if (geometry.type === 'Polygon') {
     for (const ring of geometry.coordinates) {
-      appendLineRing(ring, positions, viewBounds, elevation)
+      pushMapLine(ring, positions, viewBounds, y)
     }
     return
   }
   if (geometry.type === 'MultiPolygon') {
     for (const poly of geometry.coordinates) {
       for (const ring of poly) {
-        appendLineRing(ring, positions, viewBounds, elevation)
+        pushMapLine(ring, positions, viewBounds, y)
       }
     }
   }
@@ -119,11 +125,11 @@ function collectCoastlinePositions(
 export function createLandGeometriesFromGeoJSON(
   collection: GeoJsonFeatureCollection,
   viewBounds: GeoBounds = INDIAN_OCEAN_VIEW_BOUNDS,
-  elevation = 0.13,
+  y = GEO_REFERENCE_Y + 0.02,
 ): THREE.BufferGeometry[] {
   const geometries: THREE.BufferGeometry[] = []
   for (const feature of collection.features) {
-    collectLandGeometries(feature.geometry, viewBounds, elevation, geometries)
+    collectLandGeometries(feature.geometry, viewBounds, y, geometries)
   }
   return geometries
 }
@@ -132,11 +138,11 @@ export function createLandGeometriesFromGeoJSON(
 export function createCoastlineGeometryFromGeoJSON(
   collection: GeoJsonFeatureCollection,
   viewBounds: GeoBounds = INDIAN_OCEAN_VIEW_BOUNDS,
-  elevation = 0.16,
+  y = GEO_REFERENCE_Y + 0.04,
 ): THREE.BufferGeometry {
   const positions: number[] = []
   for (const feature of collection.features) {
-    collectCoastlinePositions(feature.geometry, positions, viewBounds, elevation)
+    collectCoastlinePositions(feature.geometry, positions, viewBounds, y)
   }
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
@@ -147,37 +153,58 @@ export function createCoastlineGeometryFromGeoJSON(
 export function createGraticuleGeometry(
   viewBounds: GeoBounds = INDIAN_OCEAN_VIEW_BOUNDS,
   step = 10,
-  elevation = 0.08,
+  y = GEO_REFERENCE_Y + 0.01,
 ): THREE.BufferGeometry {
   const positions: number[] = []
 
   const latStart = Math.ceil(viewBounds.lat_min / step) * step
   for (let lat = latStart; lat <= viewBounds.lat_max; lat += step) {
-    appendLineRing(
+    pushMapLine(
       [
         [viewBounds.lon_min, lat],
         [viewBounds.lon_max, lat],
       ],
       positions,
       viewBounds,
-      elevation,
+      y,
     )
   }
 
   const lonStart = Math.ceil(viewBounds.lon_min / step) * step
   for (let lon = lonStart; lon <= viewBounds.lon_max; lon += step) {
-    appendLineRing(
+    pushMapLine(
       [
         [lon, viewBounds.lat_min],
         [lon, viewBounds.lat_max],
       ],
       positions,
       viewBounds,
-      elevation,
+      y,
     )
   }
 
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  return geometry
+}
+
+/** Build a flat quad from geographic bounds corners (no rotation transforms). */
+export function createBoundsQuadGeometry(
+  viewBounds: GeoBounds = INDIAN_OCEAN_VIEW_BOUNDS,
+  y = GEO_REFERENCE_Y,
+): THREE.BufferGeometry {
+  const sw = latLonToSceneXZ(viewBounds.lat_min, viewBounds.lon_min, viewBounds)
+  const se = latLonToSceneXZ(viewBounds.lat_min, viewBounds.lon_max, viewBounds)
+  const ne = latLonToSceneXZ(viewBounds.lat_max, viewBounds.lon_max, viewBounds)
+  const nw = latLonToSceneXZ(viewBounds.lat_max, viewBounds.lon_min, viewBounds)
+
+  const positions = new Float32Array([
+    sw.x, y, sw.z, se.x, y, se.z, nw.x, y, nw.z,
+    se.x, y, se.z, ne.x, y, ne.z, nw.x, y, nw.z,
+  ])
+
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+  geometry.computeVertexNormals()
   return geometry
 }

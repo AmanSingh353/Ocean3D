@@ -12,6 +12,9 @@ export const INDIAN_OCEAN_VIEW_BOUNDS: ApiBounds = {
 /** Subtle vertex color for ocean areas outside the API model grid. */
 export const OCEAN_BASE_VERTEX_RGB = { r: 0.035, g: 0.078, b: 0.11 } as const
 
+/** Shared Y plane for geographic map layers (land, coastlines, graticule). */
+export const GEO_REFERENCE_Y = 0
+
 /** Three.js horizontal scene size (X axis = longitude). */
 export const GEO_SCENE_WIDTH = 54
 
@@ -52,6 +55,17 @@ export function latLonToSceneXZ(
     x: lonT * sceneWidth - sceneWidth / 2,
     z: latT * sceneDepth - sceneDepth / 2,
   }
+}
+
+/** Map latitude/longitude to a full scene position on the geographic reference plane. */
+export function latLonToSceneXYZ(
+  lat: number,
+  lon: number,
+  y: number = GEO_REFERENCE_Y,
+  bounds: GeoBounds = INDIAN_OCEAN_VIEW_BOUNDS,
+): { x: number; y: number; z: number } {
+  const { x, z } = latLonToSceneXZ(lat, lon, bounds)
+  return { x, y, z }
 }
 
 /** Inverse projection: scene X/Z → latitude/longitude. */
