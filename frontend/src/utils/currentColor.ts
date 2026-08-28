@@ -1,6 +1,22 @@
+import * as THREE from 'three'
+
 /** MVP default range when no API field is loaded yet. */
 export const CURRENT_MIN_SPEED = 0
 export const CURRENT_MAX_SPEED = 1.5
+
+/** Map current speed to cyan palette (for analysis overlays). */
+export function currentToColor(value: number, min: number, max: number): THREE.Color {
+  if (!Number.isFinite(value) || !Number.isFinite(min) || !Number.isFinite(max)) {
+    return new THREE.Color(0x0a1620)
+  }
+  const span = max - min
+  const t = span <= 0 ? 0.5 : (value - min) / span
+  const c0 = new THREE.Color(0x1565a0)
+  const c1 = new THREE.Color(0x19bcd6)
+  const c2 = new THREE.Color(0x48d5c3)
+  if (t <= 0.5) return c0.clone().lerp(c1, t * 2)
+  return c1.clone().lerp(c2, (t - 0.5) * 2)
+}
 
 /** Cyan/teal gradient matching existing current vector arrows. */
 export function getCurrentGradientCss(

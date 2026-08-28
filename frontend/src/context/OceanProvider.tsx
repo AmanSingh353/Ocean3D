@@ -27,6 +27,7 @@ import {
   snapDepth,
   toDateParam,
 } from '../services/oceanApi'
+import type { AnalysisMode, SpatialAnalysisSnapshot } from '../types/analysis'
 import type { ApiChlorophyllField, ApiCurrentField, ApiSalinityField, ApiTemperatureField } from '../types/api'
 import type { OceanContextValue } from '../types/oceanState'
 import type {
@@ -39,6 +40,7 @@ import { getTemperatureRange } from '../utils/temperatureField'
 import { getCurrentMagnitudeRange } from '../utils/currentField'
 import { getSalinityRange } from '../utils/salinityField'
 import { getChlorophyllRange } from '../utils/chlorophyllField'
+import { computeSpatialAnalysisSnapshot } from '../utils/spatialValidation'
 
 const DEFAULT_DATE = MODEL_CONFIG.dates[MODEL_CONFIG.dates.length - 1]
 const DEPTH_DEBOUNCE_MS = 300
@@ -71,6 +73,10 @@ export function OceanProvider({ children }: OceanProviderProps) {
     useState<InstrumentProfile | null>(null)
   const [comparison, setComparison] = useState<ComparisonStats | null>(null)
   const [observationTime, setObservationTime] = useState('')
+  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('model')
+  const [spatialProfilesLoading, setSpatialProfilesLoading] = useState(false)
+  const [spatialProfilesError, setSpatialProfilesError] = useState<string | null>(null)
+  const [spatialProfilesVersion, setSpatialProfilesVersion] = useState(0)
 
   const [isModelLoading, setIsModelLoading] = useState(false)
   const [isInstrumentsLoading, setIsInstrumentsLoading] = useState(false)
@@ -426,6 +432,79 @@ export function OceanProvider({ children }: OceanProviderProps) {
     setComparison(getComparisonAtDepth(instrumentProfile, selectedDepth, selectedVariable))
   }, [instrumentProfile, selectedDepth, selectedVariable])
 
+  const profilesById = useMemo(() => {
+    const map = new Map<string, InstrumentProfile>()
+    for (const inst of instruments) {
+      const cached = profileCacheRef.current.get(profileCacheKey(inst.id, selectedDate))
+      if (cached) map.set(inst.id, cached.profile)
+    }
+    return map
+  }, [instruments, selectedDate, profileCacheKey, spatialProfilesVersion, instrumentProfile, analysisMode])
+
+  // Batch-fetch platform profiles for spatial analysis (reuses profile cache)
+  useEffect(() => {
+    if (analysisMode === 'model' || instruments.length === 0) {
+      setSpatialProfilesLoading(false)
+      setSpatialProfilesError(null)
+      return
+    }
+
+    const controller = new AbortController()
+    const missing = instruments.filter(
+      (inst) => !profileCacheRef.current.has(profileCacheKey(inst.id, selectedDate)),
+    )
+
+    if (missing.length === 0) {
+      setSpatialProfilesLoading(false)
+      setSpatialProfilesError(null)
+      return () => controller.abort()
+    }
+
+    setSpatialProfilesLoading(true)
+    setSpatialProfilesError(null)
+
+    Promise.all(
+      missing.map(async (inst) => {
+        const [instrumentData, profileData] = await Promise.all([
+          getInstrument(inst.id, selectedDate, controller.signal),
+          getInstrumentProfile(inst.id, selectedDate, controller.signal),
+        ])
+        const depth = selectedDepthRef.current
+        profileCacheRef.current.set(profileCacheKey(inst.id, selectedDate), {
+          instrument: mapInstrument(instrumentData, depth),
+          profile: mapInstrumentProfile(profileData),
+          observationTime: formatObservationTime(instrumentData.last_updated),
+        })
+      }),
+    )
+      .then(() => {
+        if (controller.signal.aborted) return
+        setSpatialProfilesVersion((v) => v + 1)
+        setSpatialProfilesError(null)
+      })
+      .catch((error: unknown) => {
+        if (isAbortError(error) || controller.signal.aborted) return
+        console.error('[Ocean3D] Failed to load spatial validation profiles:', error)
+        setSpatialProfilesError('Unable to load platform validation data')
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setSpatialProfilesLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [analysisMode, instruments, selectedDate, refreshToken, profileCacheKey])
+
+  const spatialAnalysis = useMemo<SpatialAnalysisSnapshot | null>(() => {
+    if (analysisMode === 'model') return null
+    return computeSpatialAnalysisSnapshot(
+      instruments,
+      profilesById,
+      selectedDepth,
+      selectedVariable,
+      analysisMode,
+    )
+  }, [analysisMode, instruments, profilesById, selectedDepth, selectedVariable])
+
   const isLoading = isModelLoading || isInstrumentsLoading
   const error = apiError ?? modelError
 
@@ -452,6 +531,12 @@ export function OceanProvider({ children }: OceanProviderProps) {
       instrumentProfile,
       comparison,
       observationTime,
+      analysisMode,
+      setAnalysisMode,
+      spatialAnalysis,
+      regionValidation: spatialAnalysis?.region ?? null,
+      isSpatialProfilesLoading: spatialProfilesLoading,
+      spatialProfilesError,
       isModelLoading,
       isInstrumentsLoading,
       isProfileLoading,
@@ -490,6 +575,11 @@ export function OceanProvider({ children }: OceanProviderProps) {
       instrumentProfile,
       comparison,
       observationTime,
+      analysisMode,
+      setAnalysisMode,
+      spatialAnalysis,
+      spatialProfilesLoading,
+      spatialProfilesError,
       isModelLoading,
       isInstrumentsLoading,
       isProfileLoading,

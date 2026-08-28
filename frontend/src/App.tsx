@@ -133,6 +133,8 @@ function Dashboard() {
             salinityScaleMax={ocean.salinityScaleMax}
             chlorophyllScaleMin={ocean.chlorophyllScaleMin}
             chlorophyllScaleMax={ocean.chlorophyllScaleMax}
+            analysisMode={ocean.analysisMode}
+            onAnalysisModeChange={ocean.setAnalysisMode}
           />
         }
         viewer={
@@ -160,6 +162,9 @@ function Dashboard() {
             resetToken={resetToken}
             onResetView={() => setResetToken((t) => t + 1)}
             onFullscreen={toggleFullscreen}
+            analysisMode={ocean.analysisMode}
+            spatialAnalysis={ocean.spatialAnalysis}
+            spatialProfilesLoading={ocean.isSpatialProfilesLoading}
           />
         }
         observation={
@@ -173,6 +178,10 @@ function Dashboard() {
             profileLoading={ocean.isProfileLoading}
             profileError={ocean.profileError}
             onClearSelection={handleClearInstrument}
+            analysisMode={ocean.analysisMode}
+            regionValidation={ocean.regionValidation}
+            spatialProfilesLoading={ocean.isSpatialProfilesLoading}
+            spatialProfilesError={ocean.spatialProfilesError}
           />
         }
         timeline={

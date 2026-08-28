@@ -1,4 +1,4 @@
-import type { Instrument, InstrumentProfile, ComparisonStats, OceanVariable } from '../../types/ocean'
+import type { Instrument, InstrumentProfile, ValidationStats, OceanVariable } from '../../types/ocean'
 import { getVariableMeta } from '../../data/variableMeta'
 import { getProfileSeries } from '../../services/oceanApi'
 import { ProfileChart } from './ProfileChart'
@@ -7,7 +7,7 @@ import { ComparisonStatsPanel } from './ComparisonStats'
 interface InstrumentDetailsProps {
   instrument: Instrument
   profile: InstrumentProfile
-  comparison: ComparisonStats
+  comparison: ValidationStats | null
   observationTime: string
   selectedVariable: OceanVariable
   onClearSelection?: () => void
@@ -96,7 +96,16 @@ export function InstrumentDetails({
           </p>
         </section>
       )}
-      {comparison ? <ComparisonStatsPanel stats={comparison} /> : null}
+      {comparison ? (
+        <ComparisonStatsPanel stats={comparison} />
+      ) : (
+        <section className="detail-section">
+          <p className="control-hint">
+            Validation metrics unavailable — no overlapping model and observation samples for{' '}
+            {variableMeta.label.toLowerCase()} at this platform.
+          </p>
+        </section>
+      )}
       <section className="detail-section">
         <h4 className="subsection-title">PLATFORM DETAILS</h4>
         <div className="detail-row">

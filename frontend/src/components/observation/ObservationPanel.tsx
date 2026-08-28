@@ -1,16 +1,22 @@
-import type { Instrument, InstrumentProfile, ComparisonStats, OceanVariable } from '../../types/ocean'
+import type { AnalysisMode, RegionValidationStats } from '../../types/analysis'
+import type { Instrument, InstrumentProfile, ValidationStats, OceanVariable } from '../../types/ocean'
 import { InstrumentDetails } from './InstrumentDetails'
+import { RegionValidationPanel } from './RegionValidationPanel'
 
 interface ObservationPanelProps {
   selectedInstrumentId: string | null
   selectedInstrument: Instrument | null
   selectedVariable: OceanVariable
   profile: InstrumentProfile | null
-  comparison: ComparisonStats | null
+  comparison: ValidationStats | null
   observationTime: string
   profileLoading: boolean
   profileError: string | null
   onClearSelection?: () => void
+  analysisMode: AnalysisMode
+  regionValidation: RegionValidationStats | null
+  spatialProfilesLoading: boolean
+  spatialProfilesError: string | null
 }
 
 export function ObservationPanel({
@@ -23,19 +29,30 @@ export function ObservationPanel({
   profileLoading,
   profileError,
   onClearSelection,
+  analysisMode,
+  regionValidation,
+  spatialProfilesLoading,
+  spatialProfilesError,
 }: ObservationPanelProps) {
+  const showAnalysisSummary = analysisMode !== 'model'
   const showEmpty =
-    !selectedInstrumentId && !profileLoading && !profileError
+    !selectedInstrumentId && !profileLoading && !profileError && !showAnalysisSummary
   const showDetails =
     !profileLoading &&
     !profileError &&
     selectedInstrument !== null &&
-    profile !== null &&
-    comparison !== null
+    profile !== null
 
   return (
     <div className="observation-panel">
       <h2 className="panel-title">OBSERVATION</h2>
+      {showAnalysisSummary && regionValidation ? (
+        <RegionValidationPanel
+          stats={regionValidation}
+          loading={spatialProfilesLoading}
+          error={spatialProfilesError}
+        />
+      ) : null}
       {profileLoading && (
         <div className="observation-empty">
           <p className="observation-empty__title">Loading observation...</p>

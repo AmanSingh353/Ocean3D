@@ -9,14 +9,18 @@ import type {
   ApiTemperatureField,
 } from '../types/api'
 import type {
-  ComparisonStats,
   Instrument,
   InstrumentProfile,
   OceanVariable,
-  ProfilePoint,
   ProfileSeries,
 } from '../types/ocean'
-import { getVariableMeta, formatComparisonMetric } from '../data/variableMeta'
+import { getVariableMeta } from '../data/variableMeta'
+import {
+  computeValidationStats,
+  extractMatchedPairs,
+} from '../utils/validationMetrics'
+
+export { computeValidationStats, computeValidationStats as getComparisonAtDepth }
 
 export const API_BASE_URL = 'http://127.0.0.1:8000'
 
@@ -280,103 +284,25 @@ export function mapInstrumentProfile(api: ApiInstrumentProfile): InstrumentProfi
   }
 }
 
-function extractProfileValues(
-  point: ProfilePoint,
-  variable: OceanVariable,
-): { model: number; observation: number } | null {
-  switch (variable) {
-    case 'temperature':
-      return { model: point.model, observation: point.observation }
-    case 'salinity':
-      if (point.salinityModel == null || point.salinityObservation == null) return null
-      return { model: point.salinityModel, observation: point.salinityObservation }
-    case 'chlorophyll':
-      if (point.chlorophyllModel == null || point.chlorophyllObservation == null) return null
-      return { model: point.chlorophyllModel, observation: point.chlorophyllObservation }
-    case 'current':
-      if (point.currentModel == null || point.currentObservation == null) return null
-      return { model: point.currentModel, observation: point.currentObservation }
-  }
-}
-
-/** Build a single profile series for the selected ocean variable. */
+/** Build profile series for charting from matched API profile levels only. */
 export function getProfileSeries(
   profile: InstrumentProfile,
   variable: OceanVariable,
 ): ProfileSeries | null {
   const meta = getVariableMeta(variable)
-  const points = profile.points
-    .map((point) => {
-      const values = extractProfileValues(point, variable)
-      if (!values) return null
-      return { depth: point.depth, model: values.model, observation: values.observation }
-    })
-    .filter((point): point is { depth: number; model: number; observation: number } => point != null)
+  const pairs = extractMatchedPairs(profile, variable)
 
-  if (points.length === 0) return null
+  if (pairs.length === 0) return null
 
   return {
     variable,
     label: meta.profileLabel,
     unit: meta.unit,
-    points,
-  }
-}
-
-/**
- * Compare model vs observation at the selected depth for the selected variable.
- * Uses linear interpolation between discrete profile levels from the API.
- * RMSE is computed across all available profile levels for that variable (MVP demo metric).
- */
-export function getComparisonAtDepth(
-  profile: InstrumentProfile,
-  depth: number,
-  variable: OceanVariable,
-): ComparisonStats | null {
-  const meta = getVariableMeta(variable)
-
-  const validPoints = profile.points
-    .map((point) => {
-      const values = extractProfileValues(point, variable)
-      if (!values) return null
-      return { depth: point.depth, model: values.model, observation: values.observation }
-    })
-    .filter((point): point is { depth: number; model: number; observation: number } => point != null)
-
-  if (validPoints.length === 0) return null
-
-  let lower = validPoints[0]
-  let upper = validPoints[validPoints.length - 1]
-
-  for (let i = 0; i < validPoints.length - 1; i++) {
-    if (depth >= validPoints[i].depth && depth <= validPoints[i + 1].depth) {
-      lower = validPoints[i]
-      upper = validPoints[i + 1]
-      break
-    }
-  }
-
-  const t =
-    upper.depth === lower.depth
-      ? 0
-      : (depth - lower.depth) / (upper.depth - lower.depth)
-  const model = lower.model + t * (upper.model - lower.model)
-  const observation = lower.observation + t * (upper.observation - lower.observation)
-  const difference = observation - model
-
-  const squaredErrors = validPoints.map((p) => Math.pow(p.observation - p.model, 2))
-  const rmse = Math.sqrt(
-    squaredErrors.reduce((a, b) => a + b, 0) / squaredErrors.length,
-  )
-
-  return {
-    variable,
-    unit: meta.unit,
-    comparedDepth: depth,
-    model: Number(formatComparisonMetric(model, variable)),
-    observation: Number(formatComparisonMetric(observation, variable)),
-    difference: Number(formatComparisonMetric(difference, variable)),
-    rmse: Number(formatComparisonMetric(rmse, variable)),
+    points: pairs.map((p) => ({
+      depth: p.depth,
+      model: p.model,
+      observation: p.observation,
+    })),
   }
 }
 

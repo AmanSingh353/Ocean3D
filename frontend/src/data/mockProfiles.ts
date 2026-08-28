@@ -1,9 +1,10 @@
+import { computeValidationStats } from '../utils/validationMetrics'
 import { MODEL_CONFIG } from './mockModel'
 import type {
-  ComparisonStats,
   InstrumentProfile,
   OceanVariable,
   ProfilePoint,
+  ValidationStats,
 } from '../types/ocean'
 
 const INSTRUMENT_OFFSETS: Record<string, number> = {
@@ -65,43 +66,9 @@ export function getProfile(
 export function getComparisonAtDepth(
   profile: InstrumentProfile,
   depth: number,
-): ComparisonStats {
-  const points = profile.points
-  let lower = points[0]
-  let upper = points[points.length - 1]
-
-  for (let i = 0; i < points.length - 1; i++) {
-    if (depth >= points[i].depth && depth <= points[i + 1].depth) {
-      lower = points[i]
-      upper = points[i + 1]
-      break
-    }
-  }
-
-  const t =
-    upper.depth === lower.depth
-      ? 0
-      : (depth - lower.depth) / (upper.depth - lower.depth)
-  const model = lower.model + t * (upper.model - lower.model)
-  const observation =
-    lower.observation + t * (upper.observation - lower.observation)
-
-  const squaredErrors = profile.points.map((p) =>
-    Math.pow(p.observation - p.model, 2),
-  )
-  const rmse = Math.sqrt(
-    squaredErrors.reduce((a, b) => a + b, 0) / squaredErrors.length,
-  )
-
-  return {
-    variable: 'temperature',
-    unit: '°C',
-    comparedDepth: depth,
-    model: Number(model.toFixed(1)),
-    observation: Number(observation.toFixed(1)),
-    difference: Number((observation - model).toFixed(1)),
-    rmse: Number(rmse.toFixed(2)),
-  }
+  variable: OceanVariable = 'temperature',
+): ValidationStats | null {
+  return computeValidationStats(profile, depth, variable)
 }
 
 export function getObservationTime(date: string, instrumentId: string): string {

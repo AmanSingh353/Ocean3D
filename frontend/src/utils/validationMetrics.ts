@@ -1,0 +1,170 @@
+import type { InstrumentProfile, OceanVariable, ProfilePoint, ValidationStats } from '../types/ocean'
+import { formatComparisonMetric, getVariableMeta } from '../data/variableMeta'
+
+/** RMSE thresholds per variable — adjust in this file only. */
+export const VALIDATION_RMSE_THRESHOLDS: Record<
+  OceanVariable,
+  { good: number; moderate: number }
+> = {
+  temperature: { good: 0.5, moderate: 1.0 },
+  salinity: { good: 0.15, moderate: 0.35 },
+  chlorophyll: { good: 0.1, moderate: 0.25 },
+  current: { good: 0.05, moderate: 0.15 },
+}
+
+export type ValidationStatus = 'GOOD' | 'MODERATE' | 'POOR'
+
+export type DepthMatchKind = 'exact' | 'interpolated' | 'unavailable'
+
+export interface MatchedProfilePair {
+  depth: number
+  model: number
+  observation: number
+  error: number
+}
+
+function isValidNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+/** Extract overlapping model/observation pairs from API profile data only. */
+export function extractMatchedPairs(
+  profile: InstrumentProfile,
+  variable: OceanVariable,
+): MatchedProfilePair[] {
+  const pairs: MatchedProfilePair[] = []
+
+  for (const point of profile.points) {
+    const values = extractPairValues(point, variable)
+    if (!values) continue
+    pairs.push({
+      depth: point.depth,
+      model: values.model,
+      observation: values.observation,
+      error: values.observation - values.model,
+    })
+  }
+
+  return pairs.sort((a, b) => a.depth - b.depth)
+}
+
+function extractPairValues(
+  point: ProfilePoint,
+  variable: OceanVariable,
+): { model: number; observation: number } | null {
+  switch (variable) {
+    case 'temperature':
+      if (!isValidNumber(point.model) || !isValidNumber(point.observation)) return null
+      return { model: point.model, observation: point.observation }
+    case 'salinity':
+      if (!isValidNumber(point.salinityModel) || !isValidNumber(point.salinityObservation)) {
+        return null
+      }
+      return { model: point.salinityModel, observation: point.salinityObservation }
+    case 'chlorophyll':
+      if (
+        !isValidNumber(point.chlorophyllModel) ||
+        !isValidNumber(point.chlorophyllObservation)
+      ) {
+        return null
+      }
+      return { model: point.chlorophyllModel, observation: point.chlorophyllObservation }
+    case 'current':
+      if (!isValidNumber(point.currentModel) || !isValidNumber(point.currentObservation)) {
+        return null
+      }
+      return { model: point.currentModel, observation: point.currentObservation }
+  }
+}
+
+export function getValidationStatus(
+  rmse: number,
+  variable: OceanVariable,
+): ValidationStatus {
+  const thresholds = VALIDATION_RMSE_THRESHOLDS[variable]
+  if (rmse <= thresholds.good) return 'GOOD'
+  if (rmse <= thresholds.moderate) return 'MODERATE'
+  return 'POOR'
+}
+
+/** Linear interpolation at depth using only matched API profile levels. */
+function sampleAtDepth(
+  pairs: MatchedProfilePair[],
+  depth: number,
+): { model: number; observation: number; depthMatch: DepthMatchKind } | null {
+  if (pairs.length === 0) return null
+
+  const exact = pairs.find((p) => p.depth === depth)
+  if (exact) {
+    return { model: exact.model, observation: exact.observation, depthMatch: 'exact' }
+  }
+
+  if (depth < pairs[0].depth || depth > pairs[pairs.length - 1].depth) {
+    return null
+  }
+
+  let lower = pairs[0]
+  let upper = pairs[pairs.length - 1]
+
+  for (let i = 0; i < pairs.length - 1; i++) {
+    if (depth >= pairs[i].depth && depth <= pairs[i + 1].depth) {
+      lower = pairs[i]
+      upper = pairs[i + 1]
+      break
+    }
+  }
+
+  const span = upper.depth - lower.depth
+  if (span <= 0) return null
+
+  const t = (depth - lower.depth) / span
+  return {
+    model: lower.model + t * (upper.model - lower.model),
+    observation: lower.observation + t * (upper.observation - lower.observation),
+    depthMatch: 'interpolated',
+  }
+}
+
+export function computeValidationStats(
+  profile: InstrumentProfile,
+  depth: number,
+  variable: OceanVariable,
+): ValidationStats | null {
+  const meta = getVariableMeta(variable)
+  const pairs = extractMatchedPairs(profile, variable)
+
+  if (pairs.length === 0) return null
+
+  const errors = pairs.map((p) => p.error)
+  const absErrors = errors.map(Math.abs)
+  const squaredErrors = errors.map((e) => e * e)
+
+  const meanBias = errors.reduce((a, b) => a + b, 0) / errors.length
+  const mae = absErrors.reduce((a, b) => a + b, 0) / absErrors.length
+  const rmse = Math.sqrt(squaredErrors.reduce((a, b) => a + b, 0) / squaredErrors.length)
+
+  const depthSample = sampleAtDepth(pairs, depth)
+  const bias =
+    depthSample != null ? depthSample.observation - depthSample.model : null
+
+  return {
+    variable,
+    unit: meta.unit,
+    comparedDepth: depth,
+    depthMatch: depthSample?.depthMatch ?? 'unavailable',
+    model:
+      depthSample != null
+        ? Number(formatComparisonMetric(depthSample.model, variable))
+        : null,
+    observation:
+      depthSample != null
+        ? Number(formatComparisonMetric(depthSample.observation, variable))
+        : null,
+    bias: bias != null ? Number(formatComparisonMetric(bias, variable)) : null,
+    meanBias: Number(formatComparisonMetric(meanBias, variable)),
+    mae: Number(formatComparisonMetric(mae, variable)),
+    rmse: Number(formatComparisonMetric(rmse, variable)),
+    matchedPoints: pairs.length,
+    validationStatus: getValidationStatus(rmse, variable),
+  }
+}

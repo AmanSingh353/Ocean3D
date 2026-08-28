@@ -1,5 +1,10 @@
 import type { ApiChlorophyllField, ApiCurrentField, ApiSalinityField, ApiTemperatureField } from './api'
 import type {
+  AnalysisMode,
+  RegionValidationStats,
+  SpatialAnalysisSnapshot,
+} from './analysis'
+import type {
   ComparisonStats,
   Instrument,
   InstrumentProfile,
@@ -21,6 +26,11 @@ export interface OceanDataState {
   instrumentProfile: InstrumentProfile | null
   comparison: ComparisonStats | null
   observationTime: string
+  analysisMode: AnalysisMode
+  spatialAnalysis: SpatialAnalysisSnapshot | null
+  regionValidation: RegionValidationStats | null
+  isSpatialProfilesLoading: boolean
+  spatialProfilesError: string | null
   isModelLoading: boolean
   isInstrumentsLoading: boolean
   isProfileLoading: boolean
@@ -33,6 +43,7 @@ export interface OceanDataActions {
   setSelectedDate: (date: string) => void
   setSelectedDepth: (depth: number) => void
   setSelectedVariable: (variable: OceanVariable) => void
+  setAnalysisMode: (mode: AnalysisMode) => void
   selectInstrument: (id: string) => void
   clearInstrumentSelection: () => void
   retryOceanData: () => void

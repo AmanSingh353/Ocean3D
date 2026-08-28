@@ -32,7 +32,11 @@ export interface ProfileSeries {
   variable: OceanVariable
   label: string
   unit: string
-  points: { depth: number; model: number; observation: number }[]
+  points: {
+    depth: number
+    model: number | null
+    observation: number | null
+  }[]
 }
 
 export interface InstrumentProfile {
@@ -42,15 +46,27 @@ export interface InstrumentProfile {
   points: ProfilePoint[]
 }
 
-export interface ComparisonStats {
+export type ValidationStatus = 'GOOD' | 'MODERATE' | 'POOR'
+
+export type DepthMatchKind = 'exact' | 'interpolated' | 'unavailable'
+
+export interface ValidationStats {
   variable: OceanVariable
   unit: string
   comparedDepth: number
-  model: number
-  observation: number
-  difference: number
+  depthMatch: DepthMatchKind
+  model: number | null
+  observation: number | null
+  bias: number | null
+  meanBias: number
+  mae: number
   rmse: number
+  matchedPoints: number
+  validationStatus: ValidationStatus
 }
+
+/** @deprecated Alias for ValidationStats */
+export type ComparisonStats = ValidationStats
 
 export interface ModelConfig {
   variable: OceanVariable

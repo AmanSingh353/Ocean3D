@@ -27,11 +27,14 @@ import {
 } from '../../utils/chlorophyllField'
 import { chlorophyllToColor } from '../../utils/chlorophyllColor'
 import { InstrumentMarker } from './InstrumentMarker'
+import { AnalysisColorbar } from './AnalysisColorbar'
 import { ChlorophyllColorbar } from './ChlorophyllColorbar'
 import { CurrentColorbar } from './CurrentColorbar'
 import { SalinityColorbar } from './SalinityColorbar'
 import { TemperatureColorbar } from './TemperatureColorbar'
 import { VisualizationToolbar, type ViewMode } from './VisualizationToolbar'
+import type { AnalysisMode, SpatialAnalysisSnapshot } from '../../types/analysis'
+import { applySpatialAnalysisToGeometry } from '../../utils/spatialAnalysisField'
 
 interface OceanViewerProps {
   selectedVariable: OceanVariable
@@ -57,6 +60,9 @@ interface OceanViewerProps {
   resetToken: number
   onResetView: () => void
   onFullscreen: () => void
+  analysisMode: AnalysisMode
+  spatialAnalysis: SpatialAnalysisSnapshot | null
+  spatialProfilesLoading: boolean
 }
 
 function createIndiaOutline(): THREE.Vector2[] {
@@ -93,6 +99,9 @@ export function OceanViewer({
   resetToken,
   onResetView,
   onFullscreen,
+  analysisMode,
+  spatialAnalysis,
+  spatialProfilesLoading,
 }: OceanViewerProps) {
   const canvasHostRef = useRef<HTMLDivElement>(null)
   const temperatureFieldRef = useRef<ApiTemperatureField | null>(temperatureField)
@@ -118,6 +127,30 @@ export function OceanViewer({
   const isSalinityMode = selectedVariable === 'salinity'
   const isChlorophyllMode = selectedVariable === 'chlorophyll'
   const isScalarFieldMode = isTemperatureMode || isSalinityMode || isChlorophyllMode
+  const isAnalysisActive = analysisMode !== 'model'
+
+  const analysisModeLabel = useMemo(() => {
+    switch (analysisMode) {
+      case 'model':
+        return null
+      case 'observation':
+        return 'Observation'
+      case 'difference':
+        return 'Difference'
+      case 'absoluteError':
+        return 'Absolute Error'
+    }
+  }, [analysisMode])
+
+  const spatialPointById = useMemo(() => {
+    const map = new Map<string, NonNullable<SpatialAnalysisSnapshot>['points'][number]>()
+    for (const point of spatialAnalysis?.points ?? []) {
+      map.set(point.instrumentId, point)
+    }
+    return map
+  }, [spatialAnalysis])
+
+  const maxRegionAbsoluteError = spatialAnalysis?.region.maxAbsoluteError ?? null
 
   const variableMeta = VARIABLE_OPTIONS.find((v) => v.value === selectedVariable)
   const variableLabel = variableMeta?.label ?? 'Temperature'
@@ -215,34 +248,79 @@ export function OceanViewer({
   useEffect(() => {
     const refs = sceneRef.current
     if (!refs || !temperatureField || !temperatureRange || !isTemperatureMode) return
+    if (isAnalysisActive && spatialAnalysis) {
+      applySpatialAnalysisToGeometry({
+        geometry: refs.oceanMesh.geometry,
+        bounds: temperatureField.bounds,
+        variable: 'temperature',
+        mode: analysisMode,
+        points: spatialAnalysis.points,
+        legendMin: spatialAnalysis.legendMin,
+        legendMax: spatialAnalysis.legendMax,
+        temperatureField,
+        salinityField: null,
+        chlorophyllField: null,
+      })
+      return
+    }
     applyTemperatureFieldToGeometry(
       refs.oceanMesh.geometry,
       temperatureField,
       temperatureRange,
     )
-  }, [temperatureField, temperatureRange, isTemperatureMode])
+  }, [temperatureField, temperatureRange, isTemperatureMode, isAnalysisActive, spatialAnalysis, analysisMode])
 
   // Update vertex colors when the API salinity field changes
   useEffect(() => {
     const refs = sceneRef.current
     if (!refs || !salinityField || !salinityRange || !isSalinityMode) return
+    if (isAnalysisActive && spatialAnalysis) {
+      applySpatialAnalysisToGeometry({
+        geometry: refs.oceanMesh.geometry,
+        bounds: salinityField.bounds,
+        variable: 'salinity',
+        mode: analysisMode,
+        points: spatialAnalysis.points,
+        legendMin: spatialAnalysis.legendMin,
+        legendMax: spatialAnalysis.legendMax,
+        temperatureField: null,
+        salinityField,
+        chlorophyllField: null,
+      })
+      return
+    }
     applySalinityFieldToGeometry(
       refs.oceanMesh.geometry,
       salinityField,
       salinityRange,
     )
-  }, [salinityField, salinityRange, isSalinityMode])
+  }, [salinityField, salinityRange, isSalinityMode, isAnalysisActive, spatialAnalysis, analysisMode])
 
   // Update vertex colors when the API chlorophyll field changes
   useEffect(() => {
     const refs = sceneRef.current
     if (!refs || !chlorophyllField || !chlorophyllRange || !isChlorophyllMode) return
+    if (isAnalysisActive && spatialAnalysis) {
+      applySpatialAnalysisToGeometry({
+        geometry: refs.oceanMesh.geometry,
+        bounds: chlorophyllField.bounds,
+        variable: 'chlorophyll',
+        mode: analysisMode,
+        points: spatialAnalysis.points,
+        legendMin: spatialAnalysis.legendMin,
+        legendMax: spatialAnalysis.legendMax,
+        temperatureField: null,
+        salinityField: null,
+        chlorophyllField,
+      })
+      return
+    }
     applyChlorophyllFieldToGeometry(
       refs.oceanMesh.geometry,
       chlorophyllField,
       chlorophyllRange,
     )
-  }, [chlorophyllField, chlorophyllRange, isChlorophyllMode])
+  }, [chlorophyllField, chlorophyllRange, isChlorophyllMode, isAnalysisActive, spatialAnalysis, analysisMode])
 
   // Update current vector arrows when API current field changes
   useEffect(() => {
@@ -418,10 +496,10 @@ export function OceanViewer({
   return (
     <div className="ocean-viewer">
       <div className="ocean-viewer__canvas-host" ref={canvasHostRef} />
-      {(modelLoading || modelError) && (
+      {(modelLoading || modelError || (isAnalysisActive && spatialProfilesLoading)) && (
         <div className="ocean-viewer__overlay ocean-viewer__overlay--status">
           <div className="view-label view-label--status">
-            {modelLoading ? 'LOADING DATA...' : modelError}
+            {modelLoading || spatialProfilesLoading ? 'LOADING DATA...' : modelError}
           </div>
         </div>
       )}
@@ -429,6 +507,9 @@ export function OceanViewer({
         <div className="view-label">
           <span className="view-label__region">INDIAN OCEAN</span>
           <span className="view-label__detail">{variableLabel} · {selectedDepth} m</span>
+          {analysisModeLabel ? (
+            <span className="view-label__detail view-label__detail--analysis">{analysisModeLabel}</span>
+          ) : null}
           <span className="view-label__detail">{formatDisplayDate(currentDate)} · 00:00 UTC</span>
         </div>
       </div>
@@ -440,7 +521,17 @@ export function OceanViewer({
           ))}
         </div>
       </div>
-      {isTemperatureMode && temperatureRange && modelLayerEnabled && (
+      {isAnalysisActive ? (
+        <div className="ocean-viewer__overlay ocean-viewer__overlay--colorbar">
+          <AnalysisColorbar
+            mode={analysisMode}
+            variable={selectedVariable}
+            min={spatialAnalysis?.legendMin ?? null}
+            max={spatialAnalysis?.legendMax ?? null}
+          />
+        </div>
+      ) : null}
+      {!isAnalysisActive && isTemperatureMode && temperatureRange && modelLayerEnabled && (
         <div className="ocean-viewer__overlay ocean-viewer__overlay--colorbar">
           <TemperatureColorbar
             range={temperatureRange}
@@ -448,7 +539,7 @@ export function OceanViewer({
           />
         </div>
       )}
-      {isCurrentMode && (
+      {!isAnalysisActive && isCurrentMode && (
         <div className="ocean-viewer__overlay ocean-viewer__overlay--colorbar">
           <CurrentColorbar
             unit="m/s"
@@ -457,7 +548,7 @@ export function OceanViewer({
           />
         </div>
       )}
-      {isSalinityMode && salinityRange && modelLayerEnabled && (
+      {!isAnalysisActive && isSalinityMode && salinityRange && modelLayerEnabled && (
         <div className="ocean-viewer__overlay ocean-viewer__overlay--colorbar">
           <SalinityColorbar
             range={salinityRange}
@@ -465,7 +556,7 @@ export function OceanViewer({
           />
         </div>
       )}
-      {isChlorophyllMode && chlorophyllRange && modelLayerEnabled && (
+      {!isAnalysisActive && isChlorophyllMode && chlorophyllRange && modelLayerEnabled && (
         <div className="ocean-viewer__overlay ocean-viewer__overlay--colorbar">
           <ChlorophyllColorbar
             range={chlorophyllRange}
@@ -482,15 +573,22 @@ export function OceanViewer({
         />
       </div>
       <div className="ocean-viewer__markers">
-        {visibleInstruments.map((inst) => (
-          <InstrumentMarker
-            key={inst.id}
-            instrument={{ ...inst, currentDepth: selectedDepth }}
-            selected={selectedInstrumentId === inst.id}
-            visible
-            onSelect={onSelectInstrument}
-          />
-        ))}
+        {visibleInstruments.map((inst) => {
+          const spatialPoint = spatialPointById.get(inst.id)
+          return (
+            <InstrumentMarker
+              key={inst.id}
+              instrument={{ ...inst, currentDepth: selectedDepth }}
+              selected={selectedInstrumentId === inst.id}
+              visible
+              onSelect={onSelectInstrument}
+              showErrorIndicator={isAnalysisActive}
+              absoluteError={spatialPoint?.absoluteError ?? null}
+              maxAbsoluteError={maxRegionAbsoluteError}
+              variable={selectedVariable}
+            />
+          )
+        })}
       </div>
     </div>
   )

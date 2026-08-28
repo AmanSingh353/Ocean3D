@@ -1,4 +1,5 @@
 import type { OceanVariable } from '../../types/ocean'
+import type { AnalysisMode } from '../../types/analysis'
 import { VariableSelector } from './VariableSelector'
 import { DepthControl } from './DepthControl'
 import { LayerControls } from './LayerControls'
@@ -7,6 +8,7 @@ import { ColorScaleControl } from './ColorScaleControl'
 import { CurrentScaleControl } from './CurrentScaleControl'
 import { SalinityScaleControl } from './SalinityScaleControl'
 import { ChlorophyllScaleControl } from './ChlorophyllScaleControl'
+import { AnalysisModeControl } from './AnalysisModeControl'
 
 interface ControlPanelProps {
   selectedVariable: OceanVariable
@@ -34,6 +36,8 @@ interface ControlPanelProps {
   salinityScaleMax?: number
   chlorophyllScaleMin?: number
   chlorophyllScaleMax?: number
+  analysisMode: AnalysisMode
+  onAnalysisModeChange: (mode: AnalysisMode) => void
 }
 
 export function ControlPanel(props: ControlPanelProps) {
@@ -43,6 +47,8 @@ export function ControlPanel(props: ControlPanelProps) {
       <VariableSelector value={props.selectedVariable} onChange={props.onVariableChange} />
       <div className="control-divider" />
       <DepthControl depth={props.selectedDepth} onChange={props.onDepthChange} />
+      <div className="control-divider" />
+      <AnalysisModeControl value={props.analysisMode} onChange={props.onAnalysisModeChange} />
       <div className="control-divider" />
       <LayerControls
         modelLayerEnabled={props.modelLayerEnabled}
