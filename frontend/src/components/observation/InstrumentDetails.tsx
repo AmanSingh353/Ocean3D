@@ -1,3 +1,4 @@
+import type { AnalysisMode } from '../../types/analysis'
 import type { Instrument, InstrumentProfile, ValidationStats, OceanVariable } from '../../types/ocean'
 import { getVariableMeta } from '../../data/variableMeta'
 import { getProfileSeries } from '../../services/oceanApi'
@@ -11,6 +12,7 @@ interface InstrumentDetailsProps {
   observationTime: string
   selectedVariable: OceanVariable
   onClearSelection?: () => void
+  analysisMode: AnalysisMode
 }
 
 export function InstrumentDetails({
@@ -20,6 +22,7 @@ export function InstrumentDetails({
   observationTime,
   selectedVariable,
   onClearSelection,
+  analysisMode,
 }: InstrumentDetailsProps) {
   const typeLabel = instrument.type === 'argo' ? 'ARGO FLOAT' : 'GLIDER'
   const latDir = instrument.latitude >= 0 ? 'N' : 'S'
@@ -97,7 +100,7 @@ export function InstrumentDetails({
         </section>
       )}
       {comparison ? (
-        <ComparisonStatsPanel stats={comparison} />
+        <ComparisonStatsPanel stats={comparison} analysisMode={analysisMode} />
       ) : (
         <section className="detail-section">
           <p className="control-hint">

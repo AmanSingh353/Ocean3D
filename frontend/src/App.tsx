@@ -182,6 +182,7 @@ function Dashboard() {
             regionValidation={ocean.regionValidation}
             spatialProfilesLoading={ocean.isSpatialProfilesLoading}
             spatialProfilesError={ocean.spatialProfilesError}
+            selectedDepth={ocean.selectedDepth}
           />
         }
         timeline={

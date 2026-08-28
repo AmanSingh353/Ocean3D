@@ -84,6 +84,16 @@ export function getLegendTicks(min: number, max: number, count = 5): number[] {
   return ticks
 }
 
+/** Symmetric ticks for diverging difference scale — always includes zero when range spans it. */
+export function getDifferenceLegendTicks(min: number, max: number, count = 5): number[] {
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return []
+  if (min >= 0 || max <= 0) return getLegendTicks(min, max, count)
+  const ticks = getLegendTicks(min, max, count)
+  const mid = Math.floor(count / 2)
+  ticks[mid] = 0
+  return ticks
+}
+
 /** Map normalized error magnitude (0–1) to marker accent intensity. */
 export function errorMagnitudeToCss(error: number, maxError: number): string {
   if (!Number.isFinite(error) || !Number.isFinite(maxError) || maxError <= 0) {

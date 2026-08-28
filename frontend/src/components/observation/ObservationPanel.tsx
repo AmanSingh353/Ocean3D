@@ -17,6 +17,7 @@ interface ObservationPanelProps {
   regionValidation: RegionValidationStats | null
   spatialProfilesLoading: boolean
   spatialProfilesError: string | null
+  selectedDepth: number
 }
 
 export function ObservationPanel({
@@ -33,6 +34,7 @@ export function ObservationPanel({
   regionValidation,
   spatialProfilesLoading,
   spatialProfilesError,
+  selectedDepth,
 }: ObservationPanelProps) {
   const showAnalysisSummary = analysisMode !== 'model'
   const showEmpty =
@@ -51,6 +53,8 @@ export function ObservationPanel({
           stats={regionValidation}
           loading={spatialProfilesLoading}
           error={spatialProfilesError}
+          analysisMode={analysisMode}
+          selectedDepth={selectedDepth}
         />
       ) : null}
       {profileLoading && (
@@ -89,6 +93,7 @@ export function ObservationPanel({
           observationTime={observationTime}
           selectedVariable={selectedVariable}
           onClearSelection={onClearSelection}
+          analysisMode={analysisMode}
         />
       ) : null}
     </div>

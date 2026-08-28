@@ -6,6 +6,7 @@ import {
   formatAnalysisTick,
   getAbsoluteErrorGradientCss,
   getDifferenceGradientCss,
+  getDifferenceLegendTicks,
   getLegendTicks,
 } from '../../utils/analysisColor'
 import { getChlorophyllGradientCss } from '../../utils/chlorophyllColor'
@@ -21,16 +22,15 @@ interface AnalysisColorbarProps {
 }
 
 function getTitle(mode: AnalysisMode, variable: OceanVariable): string {
-  const label = getVariableMeta(variable).label
   switch (mode) {
     case 'model':
-      return label
+      return getVariableMeta(variable).label
     case 'observation':
-      return `${label} Observation`
+      return 'Observation'
     case 'difference':
-      return `${label} Difference`
+      return 'Difference'
     case 'absoluteError':
-      return `${label} Absolute Error`
+      return 'Absolute Error'
   }
 }
 
@@ -50,7 +50,7 @@ function getGradient(mode: AnalysisMode, variable: OceanVariable): string {
 }
 
 function getExtremeLabels(mode: AnalysisMode): { low: string; high: string } {
-  if (mode === 'difference') return { low: 'Model < Obs', high: 'Model > Obs' }
+  if (mode === 'difference') return { low: 'Negative', high: 'Positive' }
   if (mode === 'absoluteError') return { low: 'Low', high: 'High' }
   return { low: 'Low', high: 'High' }
 }
@@ -59,8 +59,9 @@ export function AnalysisColorbar({ mode, variable, min, max }: AnalysisColorbarP
   const unit = getVariableMeta(variable).unit
   const ticks = useMemo(() => {
     if (min == null || max == null) return []
+    if (mode === 'difference') return getDifferenceLegendTicks(min, max)
     return getLegendTicks(min, max)
-  }, [min, max])
+  }, [min, max, mode])
   const extremes = getExtremeLabels(mode)
 
   if (min == null || max == null) {

@@ -34,7 +34,7 @@ import { SalinityColorbar } from './SalinityColorbar'
 import { TemperatureColorbar } from './TemperatureColorbar'
 import { VisualizationToolbar, type ViewMode } from './VisualizationToolbar'
 import type { AnalysisMode, SpatialAnalysisSnapshot } from '../../types/analysis'
-import { applySpatialAnalysisToGeometry } from '../../utils/spatialAnalysisField'
+import { applySpatialAnalysisToGeometry, applyNeutralOceanGeometry } from '../../utils/spatialAnalysisField'
 
 interface OceanViewerProps {
   selectedVariable: OceanVariable
@@ -151,6 +151,12 @@ export function OceanViewer({
   }, [spatialAnalysis])
 
   const maxRegionAbsoluteError = spatialAnalysis?.region.maxAbsoluteError ?? null
+  const analysisReady =
+    isAnalysisActive && spatialAnalysis != null && !spatialProfilesLoading
+  const showObservationEmpty =
+    analysisMode === 'observation' &&
+    analysisReady &&
+    !spatialAnalysis.hasData
 
   const variableMeta = VARIABLE_OPTIONS.find((v) => v.value === selectedVariable)
   const variableLabel = variableMeta?.label ?? 'Temperature'
@@ -248,7 +254,7 @@ export function OceanViewer({
   useEffect(() => {
     const refs = sceneRef.current
     if (!refs || !temperatureField || !temperatureRange || !isTemperatureMode) return
-    if (isAnalysisActive && spatialAnalysis) {
+    if (analysisReady) {
       applySpatialAnalysisToGeometry({
         geometry: refs.oceanMesh.geometry,
         bounds: temperatureField.bounds,
@@ -268,13 +274,13 @@ export function OceanViewer({
       temperatureField,
       temperatureRange,
     )
-  }, [temperatureField, temperatureRange, isTemperatureMode, isAnalysisActive, spatialAnalysis, analysisMode])
+  }, [temperatureField, temperatureRange, isTemperatureMode, analysisReady, spatialAnalysis, analysisMode])
 
   // Update vertex colors when the API salinity field changes
   useEffect(() => {
     const refs = sceneRef.current
     if (!refs || !salinityField || !salinityRange || !isSalinityMode) return
-    if (isAnalysisActive && spatialAnalysis) {
+    if (analysisReady) {
       applySpatialAnalysisToGeometry({
         geometry: refs.oceanMesh.geometry,
         bounds: salinityField.bounds,
@@ -294,13 +300,13 @@ export function OceanViewer({
       salinityField,
       salinityRange,
     )
-  }, [salinityField, salinityRange, isSalinityMode, isAnalysisActive, spatialAnalysis, analysisMode])
+  }, [salinityField, salinityRange, isSalinityMode, analysisReady, spatialAnalysis, analysisMode])
 
   // Update vertex colors when the API chlorophyll field changes
   useEffect(() => {
     const refs = sceneRef.current
     if (!refs || !chlorophyllField || !chlorophyllRange || !isChlorophyllMode) return
-    if (isAnalysisActive && spatialAnalysis) {
+    if (analysisReady) {
       applySpatialAnalysisToGeometry({
         geometry: refs.oceanMesh.geometry,
         bounds: chlorophyllField.bounds,
@@ -320,7 +326,29 @@ export function OceanViewer({
       chlorophyllField,
       chlorophyllRange,
     )
-  }, [chlorophyllField, chlorophyllRange, isChlorophyllMode, isAnalysisActive, spatialAnalysis, analysisMode])
+  }, [chlorophyllField, chlorophyllRange, isChlorophyllMode, analysisReady, spatialAnalysis, analysisMode])
+
+  // Current variable: apply spatial analysis overlay at platform locations
+  useEffect(() => {
+    const refs = sceneRef.current
+    if (!refs || !currentField || !isCurrentMode) return
+    if (analysisReady) {
+      applySpatialAnalysisToGeometry({
+        geometry: refs.oceanMesh.geometry,
+        bounds: currentField.bounds,
+        variable: 'current',
+        mode: analysisMode,
+        points: spatialAnalysis.points,
+        legendMin: spatialAnalysis.legendMin,
+        legendMax: spatialAnalysis.legendMax,
+        temperatureField: null,
+        salinityField: null,
+        chlorophyllField: null,
+      })
+      return
+    }
+    applyNeutralOceanGeometry(refs.oceanMesh.geometry)
+  }, [currentField, isCurrentMode, analysisReady, spatialAnalysis, analysisMode])
 
   // Update current vector arrows when API current field changes
   useEffect(() => {
@@ -503,6 +531,13 @@ export function OceanViewer({
           </div>
         </div>
       )}
+      {showObservationEmpty && (
+        <div className="ocean-viewer__overlay ocean-viewer__overlay--analysis-empty">
+          <div className="view-label view-label--status">
+            No observation data available at this depth
+          </div>
+        </div>
+      )}
       <div className="ocean-viewer__overlay ocean-viewer__overlay--label">
         <div className="view-label">
           <span className="view-label__region">INDIAN OCEAN</span>
@@ -582,7 +617,7 @@ export function OceanViewer({
               selected={selectedInstrumentId === inst.id}
               visible
               onSelect={onSelectInstrument}
-              showErrorIndicator={isAnalysisActive}
+              showErrorIndicator={analysisMode === 'difference' || analysisMode === 'absoluteError'}
               absoluteError={spatialPoint?.absoluteError ?? null}
               maxAbsoluteError={maxRegionAbsoluteError}
               variable={selectedVariable}

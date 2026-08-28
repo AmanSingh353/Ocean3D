@@ -1600,6 +1600,25 @@ button {
   box-shadow: 0 0 12px rgba(240, 122, 122, 0.45);
 }
 
+.stat-item--highlight {
+  border-color: rgba(25, 188, 214, 0.55);
+  box-shadow: 0 0 12px var(--accent-glow-soft);
+}
+
+.stat-hint {
+  font-size: 8px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.ocean-viewer__overlay--analysis-empty {
+  pointer-events: none;
+  inset: auto;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
 .stat-item {
   display: flex;
   flex-direction: column;

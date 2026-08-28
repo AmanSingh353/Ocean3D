@@ -155,3 +155,12 @@ export function applySpatialAnalysisToGeometry(input: SpatialAnalysisFieldInput)
 
   colors.needsUpdate = true
 }
+
+/** Reset ocean mesh to neutral dark (used when scalar field is not active). */
+export function applyNeutralOceanGeometry(geometry: THREE.BufferGeometry): void {
+  const colors = geometry.attributes.color as THREE.BufferAttribute
+  for (let i = 0; i < colors.count; i++) {
+    colors.setXYZ(i, MISSING_VERTEX_COLOR.r, MISSING_VERTEX_COLOR.g, MISSING_VERTEX_COLOR.b)
+  }
+  colors.needsUpdate = true
+}
