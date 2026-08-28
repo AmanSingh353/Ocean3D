@@ -19,6 +19,7 @@ interface InstrumentMarkerProps {
   showAbsoluteErrorInTooltip?: boolean
   variable?: OceanVariable
   analysisMode?: AnalysisMode
+  screenPosition?: { x: number; y: number; visible: boolean }
 }
 
 export function InstrumentMarker({
@@ -35,10 +36,16 @@ export function InstrumentMarker({
   showRegionalValidation = false,
   showAbsoluteErrorInTooltip = false,
   variable = 'temperature',
+  screenPosition,
 }: InstrumentMarkerProps) {
   if (!visible) return null
 
-  const pos = latLonToScenePercent(instrument.latitude, instrument.longitude)
+  const pos = screenPosition
+    ? { x: screenPosition.x, y: screenPosition.y, visible: screenPosition.visible }
+    : { ...latLonToScenePercent(instrument.latitude, instrument.longitude), visible: true }
+
+  if (!pos.visible) return null
+
   const colorClass = instrument.type === 'argo' ? 'marker--argo' : 'marker--glider'
   const hasMatchedError =
     absoluteError != null && Number.isFinite(absoluteError)
@@ -77,8 +84,8 @@ export function InstrumentMarker({
       type="button"
       className={`instrument-marker ${colorClass} ${selected ? 'instrument-marker--selected' : ''} ${showLegacyErrorRing || showRegionalMarker ? 'instrument-marker--error' : ''} ${showRegionalMarker ? 'instrument-marker--validation' : ''}`}
       style={{
-        left: `${pos.x}%`,
-        top: `${pos.y}%`,
+        left: screenPosition ? `${pos.x}px` : `${pos.x}%`,
+        top: screenPosition ? `${pos.y}px` : `${pos.y}%`,
         ['--error-scale' as string]: errorScale,
         ...(validationColor ? { ['--validation-color' as string]: validationColor } : {}),
       }}

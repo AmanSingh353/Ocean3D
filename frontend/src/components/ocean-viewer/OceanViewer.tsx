@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useMemo } from 'react'
+import { useEffect, useRef, useCallback, useMemo, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import type { ApiChlorophyllField, ApiCurrentField, ApiSalinityField, ApiTemperatureField } from '../../types/api'
@@ -14,7 +14,7 @@ import {
   getTemperatureRange,
   sampleTemperatureField,
 } from '../../utils/temperatureField'
-import { normalizedToColor, temperatureToColor } from '../../utils/temperatureColor'
+import { temperatureToColor } from '../../utils/temperatureColor'
 import {
   applySalinityFieldToGeometry,
   getSalinityRange,
@@ -37,6 +37,19 @@ import { VisualizationToolbar, type ViewMode } from './VisualizationToolbar'
 import type { AnalysisMode, SpatialAnalysisSnapshot } from '../../types/analysis'
 import { applySpatialAnalysisToGeometry, applyNeutralOceanGeometry } from '../../utils/spatialAnalysisField'
 import { usesSpatialMeshOverlay } from '../../utils/spatialValidation'
+import { DEFAULT_REGION } from '../../data/defaults'
+import { INDIAN_OCEAN_COASTLINES } from '../../data/indianOceanCoastlines'
+import {
+  createCoastlineGeometry,
+  createDepthSliceGeometry,
+  createModelSurfaceGeometry,
+  createOceanBaseGeometry,
+} from '../../utils/oceanGeometry'
+import {
+  INDIAN_OCEAN_VIEW_BOUNDS,
+  latLonToSceneXZ,
+  projectSceneToScreen,
+} from '../../utils/geoProjection'
 
 interface OceanViewerProps {
   selectedVariable: OceanVariable
@@ -72,14 +85,10 @@ interface OceanViewerProps {
   validationLayerEnabled?: boolean
 }
 
-function createIndiaOutline(): THREE.Vector2[] {
-  return [
-    new THREE.Vector2(-4, 6), new THREE.Vector2(-2, 8), new THREE.Vector2(0, 9),
-    new THREE.Vector2(2, 8.5), new THREE.Vector2(4, 7), new THREE.Vector2(5, 4),
-    new THREE.Vector2(4.5, 1), new THREE.Vector2(3, -1), new THREE.Vector2(1, -2),
-    new THREE.Vector2(-1, -1.5), new THREE.Vector2(-3, 0), new THREE.Vector2(-4.5, 2),
-    new THREE.Vector2(-5, 4),
-  ]
+interface MarkerScreenPosition {
+  x: number
+  y: number
+  visible: boolean
 }
 
 export function OceanViewer({
@@ -116,6 +125,9 @@ export function OceanViewer({
   validationLayerEnabled = false,
 }: OceanViewerProps) {
   const canvasHostRef = useRef<HTMLDivElement>(null)
+  const instrumentsRef = useRef(instruments)
+  instrumentsRef.current = instruments
+  const [markerScreenPos, setMarkerScreenPos] = useState<Record<string, MarkerScreenPosition>>({})
   const temperatureFieldRef = useRef<ApiTemperatureField | null>(temperatureField)
   temperatureFieldRef.current = temperatureField
   const currentFieldRef = useRef<ApiCurrentField | null>(currentField)
@@ -239,9 +251,10 @@ export function OceanViewer({
     sliceMat.opacity = isScalarFieldMode ? Math.min(1, baseOpacity + 0.15) : 0
 
     refs.oceanMesh.scale.y = verticalExaggeration * 0.5
+    const baseY = -4 * verticalExaggeration * 0.5
+    refs.oceanMesh.position.y = baseY
     refs.depthSlice.position.y =
-      -4 * verticalExaggeration * 0.5 +
-      (selectedDepth / 1000) * 4 * verticalExaggeration * 0.5
+      baseY + (selectedDepth / 1000) * 4 * verticalExaggeration * 0.5
 
     if (temperatureField && temperatureRange && isTemperatureMode) {
       const centerLat =
@@ -412,8 +425,9 @@ export function OceanViewer({
     const scene = new THREE.Scene()
     scene.fog = new THREE.FogExp2(0x06121f, 0.018)
 
-    const camera = new THREE.PerspectiveCamera(52, width / height, 0.1, 200)
-    camera.position.set(14, 16, 22)
+    const camera = new THREE.PerspectiveCamera(52, width / height, 0.1, 250)
+    const modelCenter = latLonToSceneXZ(12.5, 75, INDIAN_OCEAN_VIEW_BOUNDS)
+    camera.position.set(modelCenter.x + 6, 24, modelCenter.z + 22)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -424,25 +438,40 @@ export function OceanViewer({
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
     controls.dampingFactor = 0.06
-    controls.maxPolarAngle = Math.PI / 2.1
-    controls.minDistance = 8
-    controls.maxDistance = 45
-    controls.target.set(0, -1, 0)
+    controls.maxPolarAngle = Math.PI / 2.05
+    controls.minDistance = 12
+    controls.maxDistance = 80
+    controls.target.set(modelCenter.x, -1, modelCenter.z)
 
     scene.add(new THREE.AmbientLight(0x1a4a5c, 0.6))
     const dirLight = new THREE.DirectionalLight(0x48d5c3, 0.8)
     dirLight.position.set(10, 20, 10)
     scene.add(dirLight)
 
-    const oceanGeometry = new THREE.BoxGeometry(28, 8, 18, 14, 6, 10)
-    const positions = oceanGeometry.attributes.position
-    const colors: number[] = []
-    const placeholder = normalizedToColor(0.5)
-    for (let i = 0; i < positions.count; i++) {
-      colors.push(placeholder.r, placeholder.g, placeholder.b)
-    }
-    oceanGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+    const baseOceanMesh = new THREE.Mesh(
+      createOceanBaseGeometry(),
+      new THREE.MeshPhongMaterial({
+        color: 0x071018,
+        transparent: true,
+        opacity: 0.92,
+        side: THREE.DoubleSide,
+      }),
+    )
+    baseOceanMesh.position.y = -4.08
+    scene.add(baseOceanMesh)
 
+    const coastlineGeometry = createCoastlineGeometry(INDIAN_OCEAN_COASTLINES)
+    const coastlines = new THREE.LineSegments(
+      coastlineGeometry,
+      new THREE.LineBasicMaterial({
+        color: 0x2a8a9a,
+        transparent: true,
+        opacity: 0.55,
+      }),
+    )
+    scene.add(coastlines)
+
+    const oceanGeometry = createModelSurfaceGeometry(DEFAULT_REGION, 14, 10)
     const oceanMesh = new THREE.Mesh(
       oceanGeometry,
       new THREE.MeshPhongMaterial({
@@ -457,21 +486,8 @@ export function OceanViewer({
     oceanMesh.position.y = -4
     scene.add(oceanMesh)
 
-    const gridHelper = new THREE.GridHelper(30, 20, 0x17384a, 0x0f2a3a)
-    gridHelper.position.y = 0.05
-    scene.add(gridHelper)
-
-    const indiaShape = new THREE.Shape(createIndiaOutline())
-    const indiaMesh = new THREE.Mesh(
-      new THREE.ShapeGeometry(indiaShape),
-      new THREE.MeshBasicMaterial({ color: 0x19bcd6, transparent: true, opacity: 0.35 }),
-    )
-    indiaMesh.rotation.x = -Math.PI / 2
-    indiaMesh.position.y = 0.12
-    scene.add(indiaMesh)
-
     const depthSlice = new THREE.Mesh(
-      new THREE.PlaneGeometry(26, 16),
+      createDepthSliceGeometry(DEFAULT_REGION),
       new THREE.MeshBasicMaterial({
         color: 0x19bcd6,
         transparent: true,
@@ -479,7 +495,6 @@ export function OceanViewer({
         side: THREE.DoubleSide,
       }),
     )
-    depthSlice.rotation.x = -Math.PI / 2
     scene.add(depthSlice)
 
     const currents = new THREE.Group()
@@ -489,31 +504,44 @@ export function OceanViewer({
 
     const pendingField = temperatureFieldRef.current
     if (pendingField) {
-      const pendingRange = getTemperatureRange(pendingField)
-      applyTemperatureFieldToGeometry(oceanMesh.geometry, pendingField, pendingRange)
+      applyTemperatureFieldToGeometry(oceanMesh.geometry, pendingField, getTemperatureRange(pendingField))
     }
-
     const pendingSalinity = salinityFieldRef.current
     if (pendingSalinity) {
-      const pendingSalinityRange = getSalinityRange(pendingSalinity)
-      applySalinityFieldToGeometry(oceanMesh.geometry, pendingSalinity, pendingSalinityRange)
+      applySalinityFieldToGeometry(oceanMesh.geometry, pendingSalinity, getSalinityRange(pendingSalinity))
     }
-
     const pendingChlorophyll = chlorophyllFieldRef.current
     if (pendingChlorophyll) {
-      const pendingChlorophyllRange = getChlorophyllRange(pendingChlorophyll)
-      applyChlorophyllFieldToGeometry(oceanMesh.geometry, pendingChlorophyll, pendingChlorophyllRange)
+      applyChlorophyllFieldToGeometry(oceanMesh.geometry, pendingChlorophyll, getChlorophyllRange(pendingChlorophyll))
     }
-
     const pendingCurrent = currentFieldRef.current
     if (pendingCurrent) {
       applyCurrentFieldToGroup(currents, pendingCurrent)
     }
 
+    let markerFrame = 0
     const animate = () => {
       if (!mounted) return
       controls.update()
       renderer.render(scene, camera)
+
+      markerFrame += 1
+      if (markerFrame % 1 === 0) {
+        const next: Record<string, MarkerScreenPosition> = {}
+        for (const inst of instrumentsRef.current) {
+          const { x, z } = latLonToSceneXZ(inst.latitude, inst.longitude, INDIAN_OCEAN_VIEW_BOUNDS)
+          next[inst.id] = projectSceneToScreen(
+            x,
+            0.35,
+            z,
+            camera,
+            host.clientWidth,
+            host.clientHeight,
+          )
+        }
+        setMarkerScreenPos(next)
+      }
+
       animationId = requestAnimationFrame(animate)
     }
     animate()
@@ -554,8 +582,9 @@ export function OceanViewer({
   useEffect(() => {
     const refs = sceneRef.current
     if (!refs) return
-    refs.camera.position.set(14, 16, 22)
-    refs.controls.target.set(0, -1, 0)
+    const modelCenter = latLonToSceneXZ(12.5, 75, INDIAN_OCEAN_VIEW_BOUNDS)
+    refs.camera.position.set(modelCenter.x + 6, 24, modelCenter.z + 22)
+    refs.controls.target.set(modelCenter.x, -1, modelCenter.z)
     refs.controls.update()
   }, [resetToken])
 
@@ -716,6 +745,7 @@ export function OceanViewer({
               differenceLegendMax={spatialAnalysis?.legendMax ?? null}
               variable={selectedVariable}
               analysisMode={analysisMode}
+              screenPosition={markerScreenPos[inst.id]}
             />
           )
         })}

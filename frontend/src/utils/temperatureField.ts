@@ -4,22 +4,15 @@ import {
   temperatureToColor,
   type TemperatureRange,
 } from './temperatureColor'
+import { sceneXZToLatLon, INDIAN_OCEAN_VIEW_BOUNDS } from './geoProjection'
 
-/** Map Three.js scene X/Z to geographic coordinates within API bounds. */
+/** Map Three.js scene X/Z to geographic coordinates within the view domain. */
 export function sceneToLatLon(
   x: number,
   z: number,
-  bounds: ApiBounds,
-  sceneWidth = 28,
-  sceneDepth = 18,
+  _bounds?: ApiBounds,
 ): { lat: number; lon: number } {
-  const lon =
-    bounds.lon_min +
-    ((x + sceneWidth / 2) / sceneWidth) * (bounds.lon_max - bounds.lon_min)
-  const lat =
-    bounds.lat_max -
-    ((z + sceneDepth / 2) / sceneDepth) * (bounds.lat_max - bounds.lat_min)
-  return { lat, lon }
+  return sceneXZToLatLon(x, z, INDIAN_OCEAN_VIEW_BOUNDS)
 }
 
 /** Compute min/max from the API grid, ignoring null/NaN values. */

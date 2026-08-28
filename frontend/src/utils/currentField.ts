@@ -1,5 +1,7 @@
 import * as THREE from 'three'
 import type { ApiCurrentField } from '../types/api'
+import { DEFAULT_REGION } from '../data/defaults'
+import { latLonToSceneXZ, INDIAN_OCEAN_VIEW_BOUNDS } from './geoProjection'
 import { sceneToLatLon } from './temperatureField'
 
 export interface CurrentSample {
@@ -76,12 +78,13 @@ export function getCurrentMagnitudeRange(field: ApiCurrentField): {
   return { min, max }
 }
 
-/** Arrow grid positions matching the existing Three.js scene layout. */
+/** Arrow grid positions within the model data domain (geographic). */
 export const CURRENT_ARROW_POSITIONS: readonly { x: number; z: number }[] = (() => {
+  const bounds = DEFAULT_REGION
   const positions: { x: number; z: number }[] = []
-  for (let x = -12; x <= 12; x += 4) {
-    for (let z = -8; z <= 8; z += 4) {
-      positions.push({ x, z })
+  for (let lat = bounds.lat_min; lat <= bounds.lat_max; lat += 3) {
+    for (let lon = bounds.lon_min; lon <= bounds.lon_max; lon += 4) {
+      positions.push(latLonToSceneXZ(lat, lon, INDIAN_OCEAN_VIEW_BOUNDS))
     }
   }
   return positions
