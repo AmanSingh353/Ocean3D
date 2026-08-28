@@ -3,6 +3,7 @@ from functools import lru_cache
 
 from app.schemas.model import (
     Bounds,
+    ChlorophyllFieldResponse,
     CurrentFieldResponse,
     Grid,
     ModelMetadataResponse,
@@ -109,6 +110,30 @@ def _compute_salinity(lat: float, lon: float, depth: float, date: str) -> float:
 
     value = base + lon_var + lat_var + anomaly
     return round(max(30.0, min(37.0, value)), 2)
+
+
+def _compute_chlorophyll(lat: float, lon: float, depth: float, date: str) -> float:
+    """Deterministic smooth chlorophyll-a field for the Indian Ocean MVP."""
+    day_index = _date_index(date)
+
+    # Surface bloom baseline with strong depth attenuation (euphotic zone)
+    surface = 1.85 - 0.04 * (lat - LAT_MIN) + 0.025 * day_index
+    depth_decay = math.exp(-depth / 85.0)
+    base = surface * depth_decay
+
+    # Coastal/upwelling enhancement along western boundary
+    coastal = 0.55 * math.exp(-((lon - 68.0) ** 2) / 18.0) * depth_decay
+
+    # Mesoscale patchiness
+    patch = (
+        0.42
+        * math.sin(lat * 0.58 + lon * 0.43 + day_index * 0.15)
+        * math.cos(lon * 0.33 - lat * 0.21)
+        * depth_decay
+    )
+
+    value = base + coastal + patch
+    return round(max(0.01, min(4.5, value)), 3)
 
 
 class OceanDataService:
@@ -261,6 +286,41 @@ class OceanDataService:
         values = [list(row) for row in cached]
 
         return SalinityFieldResponse(
+            date=f"{date}T00:00:00Z",
+            depth=depth,
+            bounds=Bounds(
+                lat_min=float(LAT_MIN),
+                lat_max=float(LAT_MAX),
+                lon_min=float(LON_MIN),
+                lon_max=float(LON_MAX),
+            ),
+            grid=Grid(latitudes=self.latitudes, longitudes=self.longitudes),
+            values=values,
+        )
+
+    @lru_cache(maxsize=128)
+    def _chlorophyll_slice(self, date: str, depth: int) -> tuple[tuple[float, ...], ...]:
+        rows: list[tuple[float, ...]] = []
+        for lat in self.latitudes:
+            row = tuple(
+                _compute_chlorophyll(lat, lon, float(depth), date)
+                for lon in self.longitudes
+            )
+            rows.append(row)
+        return tuple(rows)
+
+    def get_chlorophyll_field(
+        self,
+        date: str = "2026-08-24",
+        depth: int = 100,
+    ) -> ChlorophyllFieldResponse:
+        self.validate_depth_range(depth)
+        self.validate_date(date)
+
+        cached = self._chlorophyll_slice(date, depth)
+        values = [list(row) for row in cached]
+
+        return ChlorophyllFieldResponse(
             date=f"{date}T00:00:00Z",
             depth=depth,
             bounds=Bounds(

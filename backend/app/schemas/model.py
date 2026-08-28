@@ -58,6 +58,18 @@ class SalinityFieldResponse(BaseModel):
     )
 
 
+class ChlorophyllFieldResponse(BaseModel):
+    variable: Literal["chlorophyll"] = "chlorophyll"
+    unit: Literal["mg/m³"] = "mg/m³"
+    date: str = Field(description="ISO-8601 timestamp for the model field")
+    depth: int = Field(description="Depth level in meters")
+    bounds: Bounds
+    grid: Grid
+    values: list[list[float]] = Field(
+        description="Chlorophyll values [lat_index][lon_index] in mg/m³, aligned with grid axes"
+    )
+
+
 class CurrentFieldResponse(BaseModel):
     variable: Literal["current"] = "current"
     unit: Literal["m/s"] = "m/s"

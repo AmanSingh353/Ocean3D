@@ -1,4 +1,4 @@
-import type { ApiCurrentField, ApiSalinityField, ApiTemperatureField } from './api'
+import type { ApiChlorophyllField, ApiCurrentField, ApiSalinityField, ApiTemperatureField } from './api'
 import type {
   ComparisonStats,
   Instrument,
@@ -16,6 +16,7 @@ export interface OceanDataState {
   oceanData: ApiTemperatureField | null
   currentData: ApiCurrentField | null
   salinityData: ApiSalinityField | null
+  chlorophyllData: ApiChlorophyllField | null
   instruments: Instrument[]
   instrumentProfile: InstrumentProfile | null
   comparison: ComparisonStats | null
@@ -49,6 +50,8 @@ export type OceanContextValue = OceanDataState &
     currentScaleMax: number
     salinityScaleMin: number
     salinityScaleMax: number
+    chlorophyllScaleMin: number
+    chlorophyllScaleMax: number
     isLoading: boolean
     error: string | null
   }

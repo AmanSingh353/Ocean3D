@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useMemo } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import type { ApiCurrentField, ApiSalinityField, ApiTemperatureField } from '../../types/api'
+import type { ApiChlorophyllField, ApiCurrentField, ApiSalinityField, ApiTemperatureField } from '../../types/api'
 import type { Instrument, OceanVariable } from '../../types/ocean'
 import { DEPTH_TICKS, VARIABLE_OPTIONS, formatDisplayDate } from '../../data/mockModel'
 import {
@@ -20,7 +20,14 @@ import {
   sampleSalinityField,
 } from '../../utils/salinityField'
 import { salinityToColor } from '../../utils/salinityColor'
+import {
+  applyChlorophyllFieldToGeometry,
+  getChlorophyllRange,
+  sampleChlorophyllField,
+} from '../../utils/chlorophyllField'
+import { chlorophyllToColor } from '../../utils/chlorophyllColor'
 import { InstrumentMarker } from './InstrumentMarker'
+import { ChlorophyllColorbar } from './ChlorophyllColorbar'
 import { CurrentColorbar } from './CurrentColorbar'
 import { SalinityColorbar } from './SalinityColorbar'
 import { TemperatureColorbar } from './TemperatureColorbar'
@@ -41,6 +48,7 @@ interface OceanViewerProps {
   temperatureField: ApiTemperatureField | null
   currentField: ApiCurrentField | null
   salinityField: ApiSalinityField | null
+  chlorophyllField: ApiChlorophyllField | null
   modelLoading: boolean
   modelError: string | null
   onSelectInstrument: (id: string) => void
@@ -76,6 +84,7 @@ export function OceanViewer({
   temperatureField,
   currentField,
   salinityField,
+  chlorophyllField,
   modelLoading,
   modelError,
   onSelectInstrument,
@@ -92,6 +101,8 @@ export function OceanViewer({
   currentFieldRef.current = currentField
   const salinityFieldRef = useRef<ApiSalinityField | null>(salinityField)
   salinityFieldRef.current = salinityField
+  const chlorophyllFieldRef = useRef<ApiChlorophyllField | null>(chlorophyllField)
+  chlorophyllFieldRef.current = chlorophyllField
 
   const sceneRef = useRef<{
     camera: THREE.PerspectiveCamera
@@ -105,7 +116,8 @@ export function OceanViewer({
   const isTemperatureMode = selectedVariable === 'temperature'
   const isCurrentMode = selectedVariable === 'current'
   const isSalinityMode = selectedVariable === 'salinity'
-  const isScalarFieldMode = isTemperatureMode || isSalinityMode
+  const isChlorophyllMode = selectedVariable === 'chlorophyll'
+  const isScalarFieldMode = isTemperatureMode || isSalinityMode || isChlorophyllMode
 
   const variableMeta = VARIABLE_OPTIONS.find((v) => v.value === selectedVariable)
   const variableLabel = variableMeta?.label ?? 'Temperature'
@@ -123,6 +135,11 @@ export function OceanViewer({
   const salinityRange = useMemo(
     () => (salinityField ? getSalinityRange(salinityField) : null),
     [salinityField],
+  )
+
+  const chlorophyllRange = useMemo(
+    () => (chlorophyllField ? getChlorophyllRange(chlorophyllField) : null),
+    [chlorophyllField],
   )
 
   const updateOceanAppearance = useCallback(() => {
@@ -171,13 +188,27 @@ export function OceanViewer({
       )
     }
 
+    if (chlorophyllField && chlorophyllRange && isChlorophyllMode) {
+      const centerLat =
+        (chlorophyllField.bounds.lat_min + chlorophyllField.bounds.lat_max) / 2
+      const centerLon =
+        (chlorophyllField.bounds.lon_min + chlorophyllField.bounds.lon_max) / 2
+      const depthChl = sampleChlorophyllField(chlorophyllField, centerLat, centerLon)
+      sliceMat.color = chlorophyllToColor(
+        depthChl,
+        chlorophyllRange.min,
+        chlorophyllRange.max,
+      )
+    }
+
     refs.currents.visible = showCurrents
     refs.currents.scale.setScalar(isCurrentMode && showCurrents ? 1.2 : 1)
   }, [
     modelLayerEnabled, modelOpacity, verticalExaggeration, selectedDepth,
     showCurrents, temperatureField, temperatureRange,
-    salinityField, salinityRange, isScalarFieldMode,
-    isTemperatureMode, isSalinityMode, isCurrentMode,
+    salinityField, salinityRange,
+    chlorophyllField, chlorophyllRange, isScalarFieldMode,
+    isTemperatureMode, isSalinityMode, isChlorophyllMode, isCurrentMode,
   ])
 
   // Update vertex colors when the API temperature field changes — not in the render loop
@@ -201,6 +232,17 @@ export function OceanViewer({
       salinityRange,
     )
   }, [salinityField, salinityRange, isSalinityMode])
+
+  // Update vertex colors when the API chlorophyll field changes
+  useEffect(() => {
+    const refs = sceneRef.current
+    if (!refs || !chlorophyllField || !chlorophyllRange || !isChlorophyllMode) return
+    applyChlorophyllFieldToGeometry(
+      refs.oceanMesh.geometry,
+      chlorophyllField,
+      chlorophyllRange,
+    )
+  }, [chlorophyllField, chlorophyllRange, isChlorophyllMode])
 
   // Update current vector arrows when API current field changes
   useEffect(() => {
@@ -309,6 +351,12 @@ export function OceanViewer({
       applySalinityFieldToGeometry(oceanMesh.geometry, pendingSalinity, pendingSalinityRange)
     }
 
+    const pendingChlorophyll = chlorophyllFieldRef.current
+    if (pendingChlorophyll) {
+      const pendingChlorophyllRange = getChlorophyllRange(pendingChlorophyll)
+      applyChlorophyllFieldToGeometry(oceanMesh.geometry, pendingChlorophyll, pendingChlorophyllRange)
+    }
+
     const pendingCurrent = currentFieldRef.current
     if (pendingCurrent) {
       applyCurrentFieldToGroup(currents, pendingCurrent)
@@ -414,6 +462,14 @@ export function OceanViewer({
           <SalinityColorbar
             range={salinityRange}
             unit={salinityField?.unit ?? 'PSU'}
+          />
+        </div>
+      )}
+      {isChlorophyllMode && chlorophyllRange && modelLayerEnabled && (
+        <div className="ocean-viewer__overlay ocean-viewer__overlay--colorbar">
+          <ChlorophyllColorbar
+            range={chlorophyllRange}
+            unit={chlorophyllField?.unit ?? 'mg/m³'}
           />
         </div>
       )}

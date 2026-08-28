@@ -6,6 +6,7 @@ import { VisualizationControls } from './VisualizationControls'
 import { ColorScaleControl } from './ColorScaleControl'
 import { CurrentScaleControl } from './CurrentScaleControl'
 import { SalinityScaleControl } from './SalinityScaleControl'
+import { ChlorophyllScaleControl } from './ChlorophyllScaleControl'
 
 interface ControlPanelProps {
   selectedVariable: OceanVariable
@@ -31,6 +32,8 @@ interface ControlPanelProps {
   currentScaleMax?: number
   salinityScaleMin?: number
   salinityScaleMax?: number
+  chlorophyllScaleMin?: number
+  chlorophyllScaleMax?: number
 }
 
 export function ControlPanel(props: ControlPanelProps) {
@@ -66,10 +69,15 @@ export function ControlPanel(props: ControlPanelProps) {
           minSpeed={props.currentScaleMin}
           maxSpeed={props.currentScaleMax}
         />
-      ) : (
+      ) : props.selectedVariable === 'salinity' ? (
         <SalinityScaleControl
           minPsu={props.salinityScaleMin}
           maxPsu={props.salinityScaleMax}
+        />
+      ) : (
+        <ChlorophyllScaleControl
+          minChl={props.chlorophyllScaleMin}
+          maxChl={props.chlorophyllScaleMax}
         />
       )}
     </div>

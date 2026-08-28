@@ -12,6 +12,7 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import {
   formatObservationTime,
   getComparisonAtDepth,
+  getChlorophyll,
   getCurrent,
   getInstrument,
   getInstrumentProfile,
@@ -26,7 +27,7 @@ import {
   snapDepth,
   toDateParam,
 } from '../services/oceanApi'
-import type { ApiCurrentField, ApiSalinityField, ApiTemperatureField } from '../types/api'
+import type { ApiChlorophyllField, ApiCurrentField, ApiSalinityField, ApiTemperatureField } from '../types/api'
 import type { OceanContextValue } from '../types/oceanState'
 import type {
   ComparisonStats,
@@ -37,6 +38,7 @@ import type {
 import { getTemperatureRange } from '../utils/temperatureField'
 import { getCurrentMagnitudeRange } from '../utils/currentField'
 import { getSalinityRange } from '../utils/salinityField'
+import { getChlorophyllRange } from '../utils/chlorophyllField'
 
 const DEFAULT_DATE = MODEL_CONFIG.dates[MODEL_CONFIG.dates.length - 1]
 const DEPTH_DEBOUNCE_MS = 300
@@ -60,6 +62,7 @@ export function OceanProvider({ children }: OceanProviderProps) {
   const [oceanData, setOceanData] = useState<ApiTemperatureField | null>(null)
   const [currentData, setCurrentData] = useState<ApiCurrentField | null>(null)
   const [salinityData, setSalinityData] = useState<ApiSalinityField | null>(null)
+  const [chlorophyllData, setChlorophyllData] = useState<ApiChlorophyllField | null>(null)
   const [instruments, setInstruments] = useState<Instrument[]>([])
   const [selectedInstrument, setSelectedInstrument] = useState<Instrument | null>(
     null,
@@ -108,6 +111,11 @@ export function OceanProvider({ children }: OceanProviderProps) {
   const salinityRange = useMemo(
     () => (salinityData ? getSalinityRange(salinityData) : null),
     [salinityData],
+  )
+
+  const chlorophyllRange = useMemo(
+    () => (chlorophyllData ? getChlorophyllRange(chlorophyllData) : null),
+    [chlorophyllData],
   )
 
   useEffect(() => {
@@ -246,6 +254,34 @@ export function OceanProvider({ children }: OceanProviderProps) {
     return () => controller.abort()
   }, [selectedVariable, apiCurrentDepth, selectedDate, refreshToken])
 
+  // Chlorophyll field — only when chlorophyll variable is selected
+  useEffect(() => {
+    if (selectedVariable !== 'chlorophyll') return
+
+    const controller = new AbortController()
+    setIsModelLoading(true)
+    setModelError(null)
+
+    getChlorophyll(apiCurrentDepth, selectedDate, controller.signal)
+      .then((field) => {
+        if (controller.signal.aborted) return
+        setChlorophyllData(field)
+        setApiError(null)
+      })
+      .catch((error: unknown) => {
+        if (isAbortError(error) || controller.signal.aborted) return
+        console.error('[Ocean3D] Failed to load chlorophyll field:', error)
+        const message = 'Unable to load ocean data.'
+        setModelError(message)
+        setApiError(message)
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsModelLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [selectedVariable, apiCurrentDepth, selectedDate, refreshToken])
+
   // Instruments — refetch when date changes
   useEffect(() => {
     const controller = new AbortController()
@@ -364,6 +400,7 @@ export function OceanProvider({ children }: OceanProviderProps) {
       oceanData,
       currentData,
       salinityData,
+      chlorophyllData,
       instruments,
       instrumentProfile,
       comparison,
@@ -384,6 +421,8 @@ export function OceanProvider({ children }: OceanProviderProps) {
       currentScaleMax: currentMagnitudeRange?.max ?? 1.5,
       salinityScaleMin: salinityRange?.min ?? 30,
       salinityScaleMax: salinityRange?.max ?? 37,
+      chlorophyllScaleMin: chlorophyllRange?.min ?? 0.01,
+      chlorophyllScaleMax: chlorophyllRange?.max ?? 1,
     }),
     [
       availableDates,
@@ -399,6 +438,7 @@ export function OceanProvider({ children }: OceanProviderProps) {
       oceanData,
       currentData,
       salinityData,
+      chlorophyllData,
       instruments,
       instrumentProfile,
       comparison,
@@ -417,6 +457,7 @@ export function OceanProvider({ children }: OceanProviderProps) {
       setColorScale,
       currentMagnitudeRange,
       salinityRange,
+      chlorophyllRange,
     ],
   )
 

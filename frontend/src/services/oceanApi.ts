@@ -1,4 +1,5 @@
 import type {
+  ApiChlorophyllField,
   ApiCurrentField,
   ApiInstrument,
   ApiInstrumentProfile,
@@ -147,13 +148,35 @@ export function getSalinity(
   return getSalinityField(depth, date, signal)
 }
 
+export function getChlorophyllField(
+  depth: number,
+  date: string,
+  signal?: AbortSignal,
+): Promise<ApiChlorophyllField> {
+  const clampedDepth = Math.max(0, Math.min(1000, Math.round(depth)))
+  const params = new URLSearchParams({
+    depth: String(clampedDepth),
+    date: toDateParam(date),
+  })
+  return request<ApiChlorophyllField>(`/api/chlorophyll?${params}`, signal)
+}
+
+/** Alias for getChlorophyllField. */
+export function getChlorophyll(
+  depth: number,
+  date: string,
+  signal?: AbortSignal,
+): Promise<ApiChlorophyllField> {
+  return getChlorophyllField(depth, date, signal)
+}
+
 /** Route ocean field requests to the correct backend endpoint by variable. */
 export function getOceanField(
   variable: OceanVariable,
   depth: number,
   date: string,
   signal?: AbortSignal,
-): Promise<ApiTemperatureField | ApiCurrentField | ApiSalinityField> {
+): Promise<ApiTemperatureField | ApiCurrentField | ApiSalinityField | ApiChlorophyllField> {
   switch (variable) {
     case 'temperature':
       return getTemperature(depth, date, signal)
@@ -161,6 +184,8 @@ export function getOceanField(
       return getCurrent(depth, date, signal)
     case 'salinity':
       return getSalinity(depth, date, signal)
+    case 'chlorophyll':
+      return getChlorophyll(depth, date, signal)
   }
 }
 

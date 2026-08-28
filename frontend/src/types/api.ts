@@ -32,6 +32,16 @@ export interface ApiSalinityField {
   values: number[][]
 }
 
+export interface ApiChlorophyllField {
+  variable: 'chlorophyll'
+  unit: 'mg/m³'
+  date: string
+  depth: number
+  bounds: ApiBounds
+  grid: ApiGrid
+  values: number[][]
+}
+
 export interface ApiCurrentField {
   variable: 'current'
   unit: 'm/s'

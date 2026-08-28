@@ -123,6 +123,8 @@ function Dashboard() {
             currentScaleMax={ocean.currentScaleMax}
             salinityScaleMin={ocean.salinityScaleMin}
             salinityScaleMax={ocean.salinityScaleMax}
+            chlorophyllScaleMin={ocean.chlorophyllScaleMin}
+            chlorophyllScaleMax={ocean.chlorophyllScaleMax}
           />
         }
         viewer={
@@ -141,6 +143,7 @@ function Dashboard() {
             temperatureField={ocean.oceanData}
             currentField={ocean.currentData}
             salinityField={ocean.salinityData}
+            chlorophyllField={ocean.chlorophyllData}
             modelLoading={ocean.isModelLoading}
             modelError={ocean.modelError}
             onSelectInstrument={handleSelectInstrument}
