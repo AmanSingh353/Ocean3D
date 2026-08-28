@@ -111,7 +111,6 @@ export function OceanProvider({ children }: OceanProviderProps) {
       const depth = selectedDepthRef.current
       setSelectedInstrument({ ...cached.instrument, currentDepth: depth })
       setInstrumentProfile(cached.profile)
-      setComparison(getComparisonAtDepth(cached.profile, depth))
       setObservationTime(cached.observationTime)
     },
     [],
@@ -399,7 +398,6 @@ export function OceanProvider({ children }: OceanProviderProps) {
 
         setSelectedInstrument(mappedInstrument)
         setInstrumentProfile(mappedProfile)
-        setComparison(getComparisonAtDepth(mappedProfile, depth))
         setObservationTime(formattedTime)
         setApiError(null)
       })
@@ -419,12 +417,14 @@ export function OceanProvider({ children }: OceanProviderProps) {
     return () => controller.abort()
   }, [selectedInstrumentId, selectedDate, refreshToken, profileCacheKey, applyCachedProfile])
 
-  // Recompute comparison when depth changes (profile already loaded)
+  // Recompute comparison when depth or selected variable changes (profile already loaded)
   useEffect(() => {
-    if (instrumentProfile) {
-      setComparison(getComparisonAtDepth(instrumentProfile, selectedDepth))
+    if (!instrumentProfile) {
+      setComparison(null)
+      return
     }
-  }, [instrumentProfile, selectedDepth])
+    setComparison(getComparisonAtDepth(instrumentProfile, selectedDepth, selectedVariable))
+  }, [instrumentProfile, selectedDepth, selectedVariable])
 
   const isLoading = isModelLoading || isInstrumentsLoading
   const error = apiError ?? modelError

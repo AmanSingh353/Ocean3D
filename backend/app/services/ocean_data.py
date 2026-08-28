@@ -208,6 +208,18 @@ class OceanDataService:
         self.validate_date(date)
         return _compute_chlorophyll(latitude, longitude, float(depth), date)
 
+    def get_current_magnitude_at_point(
+        self,
+        latitude: float,
+        longitude: float,
+        depth: int,
+        date: str,
+    ) -> float:
+        self.validate_depth_range(depth)
+        self.validate_date(date)
+        _, _, magnitude = _compute_current(latitude, longitude, float(depth), date)
+        return magnitude
+
     def get_temperature_field(
         self,
         date: str = "2026-08-24",

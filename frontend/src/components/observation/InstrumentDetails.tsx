@@ -1,4 +1,5 @@
-import type { Instrument, InstrumentProfile, ComparisonStats } from '../../types/ocean'
+import type { Instrument, InstrumentProfile, ComparisonStats, OceanVariable } from '../../types/ocean'
+import { getVariableMeta } from '../../data/variableMeta'
 import { getProfileSeries } from '../../services/oceanApi'
 import { ProfileChart } from './ProfileChart'
 import { ComparisonStatsPanel } from './ComparisonStats'
@@ -8,6 +9,7 @@ interface InstrumentDetailsProps {
   profile: InstrumentProfile
   comparison: ComparisonStats
   observationTime: string
+  selectedVariable: OceanVariable
   onClearSelection?: () => void
 }
 
@@ -16,12 +18,14 @@ export function InstrumentDetails({
   profile,
   comparison,
   observationTime,
+  selectedVariable,
   onClearSelection,
 }: InstrumentDetailsProps) {
   const typeLabel = instrument.type === 'argo' ? 'ARGO FLOAT' : 'GLIDER'
   const latDir = instrument.latitude >= 0 ? 'N' : 'S'
   const lonDir = instrument.longitude >= 0 ? 'E' : 'W'
-  const profileSeries = getProfileSeries(profile)
+  const profileSeries = getProfileSeries(profile, selectedVariable)
+  const variableMeta = getVariableMeta(selectedVariable)
 
   return (
     <div className="instrument-details">
@@ -45,6 +49,10 @@ export function InstrumentDetails({
         <div className="detail-row">
           <span className="detail-label">Platform ID:</span>
           <span className="detail-value">{instrument.id}</span>
+        </div>
+        <div className="detail-row">
+          <span className="detail-label">Variable:</span>
+          <span className="detail-value">{variableMeta.label} ({variableMeta.unit})</span>
         </div>
         <div className="detail-row">
           <span className="detail-label">Status:</span>
@@ -77,12 +85,18 @@ export function InstrumentDetails({
             : 'N/A'}
         </div>
       </section>
-      {profileSeries.map((series) => (
-        <section key={series.variable} className="detail-section">
-          <ProfileChart series={series} maxDepth={instrument.maxDepth} />
+      {profileSeries ? (
+        <section className="detail-section">
+          <ProfileChart series={profileSeries} maxDepth={instrument.maxDepth} />
         </section>
-      ))}
-      <ComparisonStatsPanel stats={comparison} />
+      ) : (
+        <section className="detail-section">
+          <p className="control-hint">
+            No {variableMeta.label.toLowerCase()} profile data available for this platform.
+          </p>
+        </section>
+      )}
+      {comparison ? <ComparisonStatsPanel stats={comparison} /> : null}
       <section className="detail-section">
         <h4 className="subsection-title">PLATFORM DETAILS</h4>
         <div className="detail-row">

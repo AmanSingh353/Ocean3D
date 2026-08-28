@@ -1418,6 +1418,12 @@ button {
   border-bottom: 1px solid var(--border);
 }
 
+.comparison-depth {
+  margin: 0 0 10px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
 .stat-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

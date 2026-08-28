@@ -1,9 +1,10 @@
-import type { Instrument, InstrumentProfile, ComparisonStats } from '../../types/ocean'
+import type { Instrument, InstrumentProfile, ComparisonStats, OceanVariable } from '../../types/ocean'
 import { InstrumentDetails } from './InstrumentDetails'
 
 interface ObservationPanelProps {
   selectedInstrumentId: string | null
   selectedInstrument: Instrument | null
+  selectedVariable: OceanVariable
   profile: InstrumentProfile | null
   comparison: ComparisonStats | null
   observationTime: string
@@ -15,6 +16,7 @@ interface ObservationPanelProps {
 export function ObservationPanel({
   selectedInstrumentId,
   selectedInstrument,
+  selectedVariable,
   profile,
   comparison,
   observationTime,
@@ -68,6 +70,7 @@ export function ObservationPanel({
           profile={profile}
           comparison={comparison}
           observationTime={observationTime}
+          selectedVariable={selectedVariable}
           onClearSelection={onClearSelection}
         />
       ) : null}

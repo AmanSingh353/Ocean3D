@@ -24,10 +24,12 @@ export interface ProfilePoint {
   salinityObservation?: number
   chlorophyllModel?: number
   chlorophyllObservation?: number
+  currentModel?: number
+  currentObservation?: number
 }
 
 export interface ProfileSeries {
-  variable: 'temperature' | 'salinity' | 'chlorophyll'
+  variable: OceanVariable
   label: string
   unit: string
   points: { depth: number; model: number; observation: number }[]
@@ -41,6 +43,9 @@ export interface InstrumentProfile {
 }
 
 export interface ComparisonStats {
+  variable: OceanVariable
+  unit: string
+  comparedDepth: number
   model: number
   observation: number
   difference: number

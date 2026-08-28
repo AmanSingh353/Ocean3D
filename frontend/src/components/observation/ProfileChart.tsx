@@ -2,25 +2,11 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import type { ProfileSeries } from '../../types/ocean'
-import { formatChlorophyllTick } from '../../utils/chlorophyllColor'
-import { formatSalinityTick } from '../../utils/salinityColor'
-import { formatTemperatureTick } from '../../utils/temperatureColor'
+import { formatVariableTick, formatVariableValue } from '../../data/variableMeta'
 
 interface ProfileChartProps {
   series: ProfileSeries
   maxDepth?: number
-}
-
-function formatValue(value: number, unit: string): string {
-  if (unit === '°C') return `${formatTemperatureTick(value)} °C`
-  if (unit === 'PSU') return `${formatSalinityTick(value)} PSU`
-  return `${formatChlorophyllTick(value)} mg/m³`
-}
-
-function formatTick(value: number, unit: string): string {
-  if (unit === 'mg/m³') return formatChlorophyllTick(value)
-  if (unit === 'PSU') return formatSalinityTick(value)
-  return formatTemperatureTick(value)
 }
 
 export function ProfileChart({ series, maxDepth }: ProfileChartProps) {
@@ -39,7 +25,7 @@ export function ProfileChart({ series, maxDepth }: ProfileChartProps) {
           <XAxis
             type="number"
             tick={{ fill: '#7896A5', fontSize: 10 }}
-            tickFormatter={(v) => formatTick(Number(v), series.unit)}
+            tickFormatter={(v) => formatVariableTick(Number(v), series.variable)}
             label={{
               value: `${series.label} (${series.unit})`,
               position: 'insideBottom',
@@ -74,7 +60,7 @@ export function ProfileChart({ series, maxDepth }: ProfileChartProps) {
               return point?.depth != null ? `Depth: ${point.depth} m` : ''
             }}
             formatter={(value, name) => [
-              value != null ? formatValue(Number(value), series.unit) : '—',
+              value != null ? formatVariableValue(Number(value), series.variable) : '—',
               String(name ?? ''),
             ]}
             labelStyle={{ color: '#E8F5F8' }}

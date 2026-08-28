@@ -85,7 +85,7 @@ def _observation_value(
 
 
 class InstrumentDataService:
-    """Synthetic instrument observations aligned with the model service."""
+    """MVP synthetic observation provider — replace with real INCOIS/Argo ingest."""
 
     def list_instruments(self, date: str = "2026-08-24") -> list[InstrumentSummary]:
         return [
@@ -170,6 +170,18 @@ class InstrumentDataService:
                 3,
             )
 
+            cur_model = ocean_data_service.get_current_magnitude_at_point(
+                record.latitude,
+                record.longitude,
+                depth,
+                date,
+            )
+            cur_observation = round(
+                max(0.01, cur_model + record.observation_offset * 0.05
+                    + math.sin(depth * 0.016 + ord(record.id[-1])) * 0.03),
+                3,
+            )
+
             observations.append(ProfileObservation(depth=depth, value=temp_observation))
             comparison.append(
                 ProfileComparisonPoint(
@@ -180,6 +192,8 @@ class InstrumentDataService:
                     salinity_model=round(sal_model, 2),
                     chlorophyll_observation=chl_observation,
                     chlorophyll_model=round(chl_model, 3),
+                    current_observation=cur_observation,
+                    current_model=round(cur_model, 3),
                 )
             )
 

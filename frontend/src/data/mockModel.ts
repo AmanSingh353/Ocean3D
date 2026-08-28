@@ -1,4 +1,6 @@
-import type { ModelConfig, OceanVariable } from '../types/ocean'
+import type { ModelConfig } from '../types/ocean'
+
+export { VARIABLE_OPTIONS, getVariableMeta, formatVariableValue } from './variableMeta'
 
 export const MODEL_CONFIG: ModelConfig = {
   variable: 'temperature',
@@ -13,17 +15,6 @@ export const MODEL_CONFIG: ModelConfig = {
     '2026-08-24',
   ],
 }
-
-export const VARIABLE_OPTIONS: {
-  value: OceanVariable
-  label: string
-  unit: string
-}[] = [
-  { value: 'temperature', label: 'Temperature', unit: '°C' },
-  { value: 'salinity', label: 'Salinity', unit: 'PSU' },
-  { value: 'current', label: 'Current', unit: 'm/s' },
-  { value: 'chlorophyll', label: 'Chlorophyll', unit: 'mg/m³' },
-]
 
 export const DEPTH_TICKS = [0, 100, 200, 500, 1000]
 

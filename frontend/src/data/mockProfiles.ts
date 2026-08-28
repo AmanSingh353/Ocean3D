@@ -94,6 +94,9 @@ export function getComparisonAtDepth(
   )
 
   return {
+    variable: 'temperature',
+    unit: '°C',
+    comparedDepth: depth,
     model: Number(model.toFixed(1)),
     observation: Number(observation.toFixed(1)),
     difference: Number((observation - model).toFixed(1)),

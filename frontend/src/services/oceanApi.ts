@@ -13,8 +13,10 @@ import type {
   Instrument,
   InstrumentProfile,
   OceanVariable,
+  ProfilePoint,
   ProfileSeries,
 } from '../types/ocean'
+import { getVariableMeta, formatComparisonMetric } from '../data/variableMeta'
 
 export const API_BASE_URL = 'http://127.0.0.1:8000'
 
@@ -266,6 +268,8 @@ export function mapInstrumentProfile(api: ApiInstrumentProfile): InstrumentProfi
     salinityObservation: point.salinity_observation ?? undefined,
     chlorophyllModel: point.chlorophyll_model ?? undefined,
     chlorophyllObservation: point.chlorophyll_observation ?? undefined,
+    currentModel: point.current_model ?? undefined,
+    currentObservation: point.current_observation ?? undefined,
   }))
 
   return {
@@ -276,61 +280,78 @@ export function mapInstrumentProfile(api: ApiInstrumentProfile): InstrumentProfi
   }
 }
 
-export function getProfileSeries(profile: InstrumentProfile): ProfileSeries[] {
-  const series: ProfileSeries[] = [
-    {
-      variable: 'temperature',
-      label: 'Temperature',
-      unit: '°C',
-      points: profile.points.map((p) => ({
-        depth: p.depth,
-        model: p.model,
-        observation: p.observation,
-      })),
-    },
-  ]
-
-  if (profile.points.some((p) => p.salinityModel != null && p.salinityObservation != null)) {
-    series.push({
-      variable: 'salinity',
-      label: 'Salinity',
-      unit: 'PSU',
-      points: profile.points.map((p) => ({
-        depth: p.depth,
-        model: p.salinityModel ?? 0,
-        observation: p.salinityObservation ?? 0,
-      })),
-    })
+function extractProfileValues(
+  point: ProfilePoint,
+  variable: OceanVariable,
+): { model: number; observation: number } | null {
+  switch (variable) {
+    case 'temperature':
+      return { model: point.model, observation: point.observation }
+    case 'salinity':
+      if (point.salinityModel == null || point.salinityObservation == null) return null
+      return { model: point.salinityModel, observation: point.salinityObservation }
+    case 'chlorophyll':
+      if (point.chlorophyllModel == null || point.chlorophyllObservation == null) return null
+      return { model: point.chlorophyllModel, observation: point.chlorophyllObservation }
+    case 'current':
+      if (point.currentModel == null || point.currentObservation == null) return null
+      return { model: point.currentModel, observation: point.currentObservation }
   }
-
-  if (profile.points.some((p) => p.chlorophyllModel != null && p.chlorophyllObservation != null)) {
-    series.push({
-      variable: 'chlorophyll',
-      label: 'Chlorophyll',
-      unit: 'mg/m³',
-      points: profile.points.map((p) => ({
-        depth: p.depth,
-        model: p.chlorophyllModel ?? 0,
-        observation: p.chlorophyllObservation ?? 0,
-      })),
-    })
-  }
-
-  return series
 }
 
+/** Build a single profile series for the selected ocean variable. */
+export function getProfileSeries(
+  profile: InstrumentProfile,
+  variable: OceanVariable,
+): ProfileSeries | null {
+  const meta = getVariableMeta(variable)
+  const points = profile.points
+    .map((point) => {
+      const values = extractProfileValues(point, variable)
+      if (!values) return null
+      return { depth: point.depth, model: values.model, observation: values.observation }
+    })
+    .filter((point): point is { depth: number; model: number; observation: number } => point != null)
+
+  if (points.length === 0) return null
+
+  return {
+    variable,
+    label: meta.profileLabel,
+    unit: meta.unit,
+    points,
+  }
+}
+
+/**
+ * Compare model vs observation at the selected depth for the selected variable.
+ * Uses linear interpolation between discrete profile levels from the API.
+ * RMSE is computed across all available profile levels for that variable (MVP demo metric).
+ */
 export function getComparisonAtDepth(
   profile: InstrumentProfile,
   depth: number,
-): ComparisonStats {
-  const points = profile.points
-  let lower = points[0]
-  let upper = points[points.length - 1]
+  variable: OceanVariable,
+): ComparisonStats | null {
+  const meta = getVariableMeta(variable)
 
-  for (let i = 0; i < points.length - 1; i++) {
-    if (depth >= points[i].depth && depth <= points[i + 1].depth) {
-      lower = points[i]
-      upper = points[i + 1]
+  const validPoints = profile.points
+    .map((point) => {
+      const values = extractProfileValues(point, variable)
+      if (!values) return null
+      return { depth: point.depth, model: values.model, observation: values.observation }
+    })
+    .filter((point): point is { depth: number; model: number; observation: number } => point != null)
+
+  if (validPoints.length === 0) return null
+
+  let lower = validPoints[0]
+  let upper = validPoints[validPoints.length - 1]
+
+  for (let i = 0; i < validPoints.length - 1; i++) {
+    if (depth >= validPoints[i].depth && depth <= validPoints[i + 1].depth) {
+      lower = validPoints[i]
+      upper = validPoints[i + 1]
       break
     }
   }
@@ -343,16 +364,19 @@ export function getComparisonAtDepth(
   const observation = lower.observation + t * (upper.observation - lower.observation)
   const difference = observation - model
 
-  const squaredErrors = points.map((p) => Math.pow(p.observation - p.model, 2))
+  const squaredErrors = validPoints.map((p) => Math.pow(p.observation - p.model, 2))
   const rmse = Math.sqrt(
     squaredErrors.reduce((a, b) => a + b, 0) / squaredErrors.length,
   )
 
   return {
-    model: Number(model.toFixed(1)),
-    observation: Number(observation.toFixed(1)),
-    difference: Number(difference.toFixed(1)),
-    rmse: Number(rmse.toFixed(2)),
+    variable,
+    unit: meta.unit,
+    comparedDepth: depth,
+    model: Number(formatComparisonMetric(model, variable)),
+    observation: Number(formatComparisonMetric(observation, variable)),
+    difference: Number(formatComparisonMetric(difference, variable)),
+    rmse: Number(formatComparisonMetric(rmse, variable)),
   }
 }
 

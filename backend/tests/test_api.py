@@ -74,6 +74,7 @@ def test_instrument_profile():
     point = data["comparison"][0]
     assert point["salinity_observation"] is not None
     assert point["chlorophyll_observation"] is not None
+    assert point["current_observation"] is not None
 
 
 def test_instrument_not_found():

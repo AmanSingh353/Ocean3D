@@ -166,6 +166,7 @@ function Dashboard() {
           <ObservationPanel
             selectedInstrumentId={ocean.selectedInstrumentId}
             selectedInstrument={ocean.selectedInstrument}
+            selectedVariable={ocean.selectedVariable}
             profile={ocean.instrumentProfile}
             comparison={ocean.comparison}
             observationTime={ocean.observationTime}
