@@ -22,6 +22,16 @@ export interface ApiTemperatureField {
   values: number[][]
 }
 
+export interface ApiSalinityField {
+  variable: 'salinity'
+  unit: 'PSU'
+  date: string
+  depth: number
+  bounds: ApiBounds
+  grid: ApiGrid
+  values: number[][]
+}
+
 export interface ApiCurrentField {
   variable: 'current'
   unit: 'm/s'

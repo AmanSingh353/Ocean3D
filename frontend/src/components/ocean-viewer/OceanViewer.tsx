@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useMemo } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import type { ApiCurrentField, ApiTemperatureField } from '../../types/api'
+import type { ApiCurrentField, ApiSalinityField, ApiTemperatureField } from '../../types/api'
 import type { Instrument, OceanVariable } from '../../types/ocean'
 import { DEPTH_TICKS, VARIABLE_OPTIONS, formatDisplayDate } from '../../data/mockModel'
 import {
@@ -14,8 +14,15 @@ import {
   sampleTemperatureField,
 } from '../../utils/temperatureField'
 import { normalizedToColor, temperatureToColor } from '../../utils/temperatureColor'
+import {
+  applySalinityFieldToGeometry,
+  getSalinityRange,
+  sampleSalinityField,
+} from '../../utils/salinityField'
+import { salinityToColor } from '../../utils/salinityColor'
 import { InstrumentMarker } from './InstrumentMarker'
 import { CurrentColorbar } from './CurrentColorbar'
+import { SalinityColorbar } from './SalinityColorbar'
 import { TemperatureColorbar } from './TemperatureColorbar'
 import { VisualizationToolbar, type ViewMode } from './VisualizationToolbar'
 
@@ -33,6 +40,7 @@ interface OceanViewerProps {
   instruments: Instrument[]
   temperatureField: ApiTemperatureField | null
   currentField: ApiCurrentField | null
+  salinityField: ApiSalinityField | null
   modelLoading: boolean
   modelError: string | null
   onSelectInstrument: (id: string) => void
@@ -67,6 +75,7 @@ export function OceanViewer({
   instruments,
   temperatureField,
   currentField,
+  salinityField,
   modelLoading,
   modelError,
   onSelectInstrument,
@@ -81,6 +90,8 @@ export function OceanViewer({
   temperatureFieldRef.current = temperatureField
   const currentFieldRef = useRef<ApiCurrentField | null>(currentField)
   currentFieldRef.current = currentField
+  const salinityFieldRef = useRef<ApiSalinityField | null>(salinityField)
+  salinityFieldRef.current = salinityField
 
   const sceneRef = useRef<{
     camera: THREE.PerspectiveCamera
@@ -93,6 +104,8 @@ export function OceanViewer({
 
   const isTemperatureMode = selectedVariable === 'temperature'
   const isCurrentMode = selectedVariable === 'current'
+  const isSalinityMode = selectedVariable === 'salinity'
+  const isScalarFieldMode = isTemperatureMode || isSalinityMode
 
   const variableMeta = VARIABLE_OPTIONS.find((v) => v.value === selectedVariable)
   const variableLabel = variableMeta?.label ?? 'Temperature'
@@ -107,6 +120,11 @@ export function OceanViewer({
     [currentField],
   )
 
+  const salinityRange = useMemo(
+    () => (salinityField ? getSalinityRange(salinityField) : null),
+    [salinityField],
+  )
+
   const updateOceanAppearance = useCallback(() => {
     const refs = sceneRef.current
     if (!refs) return
@@ -118,9 +136,9 @@ export function OceanViewer({
     mat.opacity = effectiveOpacity
     mat.visible = effectiveOpacity > 0
 
-    refs.depthSlice.visible = modelLayerEnabled && baseOpacity > 0 && isTemperatureMode
+    refs.depthSlice.visible = modelLayerEnabled && baseOpacity > 0 && isScalarFieldMode
     const sliceMat = refs.depthSlice.material as THREE.MeshBasicMaterial
-    sliceMat.opacity = isTemperatureMode ? Math.min(1, baseOpacity + 0.15) : 0
+    sliceMat.opacity = isScalarFieldMode ? Math.min(1, baseOpacity + 0.15) : 0
 
     refs.oceanMesh.scale.y = verticalExaggeration * 0.5
     refs.depthSlice.position.y =
@@ -140,23 +158,49 @@ export function OceanViewer({
       )
     }
 
+    if (salinityField && salinityRange && isSalinityMode) {
+      const centerLat =
+        (salinityField.bounds.lat_min + salinityField.bounds.lat_max) / 2
+      const centerLon =
+        (salinityField.bounds.lon_min + salinityField.bounds.lon_max) / 2
+      const depthSalinity = sampleSalinityField(salinityField, centerLat, centerLon)
+      sliceMat.color = salinityToColor(
+        depthSalinity,
+        salinityRange.min,
+        salinityRange.max,
+      )
+    }
+
     refs.currents.visible = showCurrents
     refs.currents.scale.setScalar(isCurrentMode && showCurrents ? 1.2 : 1)
   }, [
     modelLayerEnabled, modelOpacity, verticalExaggeration, selectedDepth,
-    showCurrents, temperatureField, temperatureRange, isTemperatureMode, isCurrentMode,
+    showCurrents, temperatureField, temperatureRange,
+    salinityField, salinityRange, isScalarFieldMode,
+    isTemperatureMode, isSalinityMode, isCurrentMode,
   ])
 
   // Update vertex colors when the API temperature field changes — not in the render loop
   useEffect(() => {
     const refs = sceneRef.current
-    if (!refs || !temperatureField || !temperatureRange) return
+    if (!refs || !temperatureField || !temperatureRange || !isTemperatureMode) return
     applyTemperatureFieldToGeometry(
       refs.oceanMesh.geometry,
       temperatureField,
       temperatureRange,
     )
-  }, [temperatureField, temperatureRange])
+  }, [temperatureField, temperatureRange, isTemperatureMode])
+
+  // Update vertex colors when the API salinity field changes
+  useEffect(() => {
+    const refs = sceneRef.current
+    if (!refs || !salinityField || !salinityRange || !isSalinityMode) return
+    applySalinityFieldToGeometry(
+      refs.oceanMesh.geometry,
+      salinityField,
+      salinityRange,
+    )
+  }, [salinityField, salinityRange, isSalinityMode])
 
   // Update current vector arrows when API current field changes
   useEffect(() => {
@@ -259,6 +303,12 @@ export function OceanViewer({
       applyTemperatureFieldToGeometry(oceanMesh.geometry, pendingField, pendingRange)
     }
 
+    const pendingSalinity = salinityFieldRef.current
+    if (pendingSalinity) {
+      const pendingSalinityRange = getSalinityRange(pendingSalinity)
+      applySalinityFieldToGeometry(oceanMesh.geometry, pendingSalinity, pendingSalinityRange)
+    }
+
     const pendingCurrent = currentFieldRef.current
     if (pendingCurrent) {
       applyCurrentFieldToGroup(currents, pendingCurrent)
@@ -356,6 +406,14 @@ export function OceanViewer({
             unit="m/s"
             minSpeed={currentMagnitudeRange?.min}
             maxSpeed={currentMagnitudeRange?.max}
+          />
+        </div>
+      )}
+      {isSalinityMode && salinityRange && modelLayerEnabled && (
+        <div className="ocean-viewer__overlay ocean-viewer__overlay--colorbar">
+          <SalinityColorbar
+            range={salinityRange}
+            unit={salinityField?.unit ?? 'PSU'}
           />
         </div>
       )}

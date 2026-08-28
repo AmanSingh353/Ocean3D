@@ -113,3 +113,41 @@ def test_current_field_depth_500_differs_from_100():
 def test_current_field_invalid_depth():
     response = client.get("/api/current?depth=1500&date=2026-08-24")
     assert response.status_code == 422
+
+
+def test_salinity_field_defaults():
+    response = client.get("/api/salinity")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["variable"] == "salinity"
+    assert data["unit"] == "PSU"
+    assert data["depth"] == 100
+    assert len(data["grid"]["latitudes"]) == 16
+    assert len(data["grid"]["longitudes"]) == 21
+    assert len(data["values"]) == 16
+    assert len(data["values"][0]) == 21
+
+
+def test_salinity_field_with_depth():
+    response = client.get("/api/salinity?depth=300&date=2026-08-24")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["depth"] == 300
+    assert all(30.0 <= row_val <= 37.0 for row in data["values"] for row_val in row)
+
+
+def test_salinity_field_depth_500_differs_from_100():
+    shallow = client.get("/api/salinity?depth=100&date=2026-08-24").json()
+    deep = client.get("/api/salinity?depth=500&date=2026-08-24").json()
+    assert shallow["values"] != deep["values"]
+
+
+def test_salinity_field_invalid_depth():
+    response = client.get("/api/salinity?depth=1500&date=2026-08-24")
+    assert response.status_code == 422
+
+
+def test_salinity_is_deterministic():
+    first = client.get("/api/salinity?depth=200&date=2026-08-22").json()
+    second = client.get("/api/salinity?depth=200&date=2026-08-22").json()
+    assert first["values"] == second["values"]

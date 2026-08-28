@@ -17,6 +17,7 @@ import {
   getInstrumentProfile,
   getInstruments,
   getModelMetadata,
+  getSalinity,
   getTemperature,
   isAbortError,
   mapInstrument,
@@ -25,7 +26,7 @@ import {
   snapDepth,
   toDateParam,
 } from '../services/oceanApi'
-import type { ApiCurrentField, ApiTemperatureField } from '../types/api'
+import type { ApiCurrentField, ApiSalinityField, ApiTemperatureField } from '../types/api'
 import type { OceanContextValue } from '../types/oceanState'
 import type {
   ComparisonStats,
@@ -35,6 +36,7 @@ import type {
 } from '../types/ocean'
 import { getTemperatureRange } from '../utils/temperatureField'
 import { getCurrentMagnitudeRange } from '../utils/currentField'
+import { getSalinityRange } from '../utils/salinityField'
 
 const DEFAULT_DATE = MODEL_CONFIG.dates[MODEL_CONFIG.dates.length - 1]
 const DEPTH_DEBOUNCE_MS = 300
@@ -57,6 +59,7 @@ export function OceanProvider({ children }: OceanProviderProps) {
 
   const [oceanData, setOceanData] = useState<ApiTemperatureField | null>(null)
   const [currentData, setCurrentData] = useState<ApiCurrentField | null>(null)
+  const [salinityData, setSalinityData] = useState<ApiSalinityField | null>(null)
   const [instruments, setInstruments] = useState<Instrument[]>([])
   const [selectedInstrument, setSelectedInstrument] = useState<Instrument | null>(
     null,
@@ -100,6 +103,11 @@ export function OceanProvider({ children }: OceanProviderProps) {
   const currentMagnitudeRange = useMemo(
     () => (currentData ? getCurrentMagnitudeRange(currentData) : null),
     [currentData],
+  )
+
+  const salinityRange = useMemo(
+    () => (salinityData ? getSalinityRange(salinityData) : null),
+    [salinityData],
   )
 
   useEffect(() => {
@@ -199,6 +207,34 @@ export function OceanProvider({ children }: OceanProviderProps) {
       .catch((error: unknown) => {
         if (isAbortError(error) || controller.signal.aborted) return
         console.error('[Ocean3D] Failed to load current field:', error)
+        const message = 'Unable to load ocean data.'
+        setModelError(message)
+        setApiError(message)
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsModelLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [selectedVariable, apiCurrentDepth, selectedDate, refreshToken])
+
+  // Salinity field — only when salinity variable is selected
+  useEffect(() => {
+    if (selectedVariable !== 'salinity') return
+
+    const controller = new AbortController()
+    setIsModelLoading(true)
+    setModelError(null)
+
+    getSalinity(apiCurrentDepth, selectedDate, controller.signal)
+      .then((field) => {
+        if (controller.signal.aborted) return
+        setSalinityData(field)
+        setApiError(null)
+      })
+      .catch((error: unknown) => {
+        if (isAbortError(error) || controller.signal.aborted) return
+        console.error('[Ocean3D] Failed to load salinity field:', error)
         const message = 'Unable to load ocean data.'
         setModelError(message)
         setApiError(message)
@@ -327,6 +363,7 @@ export function OceanProvider({ children }: OceanProviderProps) {
       clearInstrumentSelection,
       oceanData,
       currentData,
+      salinityData,
       instruments,
       instrumentProfile,
       comparison,
@@ -345,6 +382,8 @@ export function OceanProvider({ children }: OceanProviderProps) {
       setColorScale,
       currentScaleMin: currentMagnitudeRange?.min ?? 0,
       currentScaleMax: currentMagnitudeRange?.max ?? 1.5,
+      salinityScaleMin: salinityRange?.min ?? 30,
+      salinityScaleMax: salinityRange?.max ?? 37,
     }),
     [
       availableDates,
@@ -359,6 +398,7 @@ export function OceanProvider({ children }: OceanProviderProps) {
       clearInstrumentSelection,
       oceanData,
       currentData,
+      salinityData,
       instruments,
       instrumentProfile,
       comparison,
@@ -376,6 +416,7 @@ export function OceanProvider({ children }: OceanProviderProps) {
       colorScaleMax,
       setColorScale,
       currentMagnitudeRange,
+      salinityRange,
     ],
   )
 

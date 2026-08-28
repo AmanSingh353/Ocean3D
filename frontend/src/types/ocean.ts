@@ -1,4 +1,4 @@
-export type OceanVariable = 'temperature' | 'current'
+export type OceanVariable = 'temperature' | 'current' | 'salinity'
 
 export type InstrumentType = 'argo' | 'glider'
 

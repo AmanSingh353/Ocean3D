@@ -121,6 +121,8 @@ function Dashboard() {
             onColorScaleApply={ocean.setColorScale}
             currentScaleMin={ocean.currentScaleMin}
             currentScaleMax={ocean.currentScaleMax}
+            salinityScaleMin={ocean.salinityScaleMin}
+            salinityScaleMax={ocean.salinityScaleMax}
           />
         }
         viewer={
@@ -138,6 +140,7 @@ function Dashboard() {
             instruments={markerInstruments}
             temperatureField={ocean.oceanData}
             currentField={ocean.currentData}
+            salinityField={ocean.salinityData}
             modelLoading={ocean.isModelLoading}
             modelError={ocean.modelError}
             onSelectInstrument={handleSelectInstrument}

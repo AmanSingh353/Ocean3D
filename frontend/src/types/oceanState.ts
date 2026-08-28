@@ -1,4 +1,4 @@
-import type { ApiCurrentField, ApiTemperatureField } from './api'
+import type { ApiCurrentField, ApiSalinityField, ApiTemperatureField } from './api'
 import type {
   ComparisonStats,
   Instrument,
@@ -15,6 +15,7 @@ export interface OceanDataState {
   selectedInstrument: Instrument | null
   oceanData: ApiTemperatureField | null
   currentData: ApiCurrentField | null
+  salinityData: ApiSalinityField | null
   instruments: Instrument[]
   instrumentProfile: InstrumentProfile | null
   comparison: ComparisonStats | null
@@ -46,6 +47,8 @@ export type OceanContextValue = OceanDataState &
     setColorScale: (min: number, max: number) => void
     currentScaleMin: number
     currentScaleMax: number
+    salinityScaleMin: number
+    salinityScaleMax: number
     isLoading: boolean
     error: string | null
   }

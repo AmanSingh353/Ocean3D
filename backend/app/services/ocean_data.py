@@ -7,6 +7,7 @@ from app.schemas.model import (
     Grid,
     ModelMetadataResponse,
     RegionInfo,
+    SalinityFieldResponse,
     TemperatureFieldResponse,
     VariableInfo,
 )
@@ -83,6 +84,31 @@ def _compute_current(
 
     magnitude = math.sqrt(u * u + v * v)
     return round(u, 3), round(v, 3), round(magnitude, 3)
+
+
+def _compute_salinity(lat: float, lon: float, depth: float, date: str) -> float:
+    """Deterministic smooth salinity field for the Indian Ocean MVP."""
+    day_index = _date_index(date)
+
+    # Surface: higher salinity in Arabian Sea, lower Bay of Bengal influence
+    surface = 35.4 + 0.06 * (lon - 75.0) - 0.04 * (lat - 12.0) - 0.015 * day_index
+
+    # Halocline: fresher surface layer mixing with depth
+    halocline = 1.0 / (1.0 + math.exp(-(depth - 90.0) / 35.0))
+    deep = 34.7 + 0.008 * day_index
+    base = surface - (surface - deep) * halocline * 0.25
+
+    lon_var = 0.35 * math.sin((lon - 72.0) * math.pi / 10.0)
+    lat_var = 0.22 * math.cos((lat - 10.0) * math.pi / 7.0)
+    anomaly = (
+        0.28
+        * math.sin(lat * 0.52 + lon * 0.41)
+        * math.cos(lon * 0.31 - lat * 0.17)
+        * (1.0 - depth / 1000.0)
+    )
+
+    value = base + lon_var + lat_var + anomaly
+    return round(max(30.0, min(37.0, value)), 2)
 
 
 class OceanDataService:
@@ -210,6 +236,41 @@ class OceanDataService:
             u=u_rows,
             v=v_rows,
             magnitude=mag_rows,
+        )
+
+    @lru_cache(maxsize=128)
+    def _salinity_slice(self, date: str, depth: int) -> tuple[tuple[float, ...], ...]:
+        rows: list[tuple[float, ...]] = []
+        for lat in self.latitudes:
+            row = tuple(
+                _compute_salinity(lat, lon, float(depth), date)
+                for lon in self.longitudes
+            )
+            rows.append(row)
+        return tuple(rows)
+
+    def get_salinity_field(
+        self,
+        date: str = "2026-08-24",
+        depth: int = 100,
+    ) -> SalinityFieldResponse:
+        self.validate_depth_range(depth)
+        self.validate_date(date)
+
+        cached = self._salinity_slice(date, depth)
+        values = [list(row) for row in cached]
+
+        return SalinityFieldResponse(
+            date=f"{date}T00:00:00Z",
+            depth=depth,
+            bounds=Bounds(
+                lat_min=float(LAT_MIN),
+                lat_max=float(LAT_MAX),
+                lon_min=float(LON_MIN),
+                lon_max=float(LON_MAX),
+            ),
+            grid=Grid(latitudes=self.latitudes, longitudes=self.longitudes),
+            values=values,
         )
 
     def get_metadata(self) -> ModelMetadataResponse:

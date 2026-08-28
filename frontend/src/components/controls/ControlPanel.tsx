@@ -5,6 +5,7 @@ import { LayerControls } from './LayerControls'
 import { VisualizationControls } from './VisualizationControls'
 import { ColorScaleControl } from './ColorScaleControl'
 import { CurrentScaleControl } from './CurrentScaleControl'
+import { SalinityScaleControl } from './SalinityScaleControl'
 
 interface ControlPanelProps {
   selectedVariable: OceanVariable
@@ -28,6 +29,8 @@ interface ControlPanelProps {
   onColorScaleApply: (min: number, max: number) => void
   currentScaleMin?: number
   currentScaleMax?: number
+  salinityScaleMin?: number
+  salinityScaleMax?: number
 }
 
 export function ControlPanel(props: ControlPanelProps) {
@@ -58,10 +61,15 @@ export function ControlPanel(props: ControlPanelProps) {
       <div className="control-divider" />
       {props.selectedVariable === 'temperature' ? (
         <ColorScaleControl min={props.colorScaleMin} max={props.colorScaleMax} onApply={props.onColorScaleApply} />
-      ) : (
+      ) : props.selectedVariable === 'current' ? (
         <CurrentScaleControl
           minSpeed={props.currentScaleMin}
           maxSpeed={props.currentScaleMax}
+        />
+      ) : (
+        <SalinityScaleControl
+          minPsu={props.salinityScaleMin}
+          maxPsu={props.salinityScaleMax}
         />
       )}
     </div>

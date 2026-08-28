@@ -46,6 +46,18 @@ class ModelMetadataResponse(BaseModel):
     region: RegionInfo
 
 
+class SalinityFieldResponse(BaseModel):
+    variable: Literal["salinity"] = "salinity"
+    unit: Literal["PSU"] = "PSU"
+    date: str = Field(description="ISO-8601 timestamp for the model field")
+    depth: int = Field(description="Depth level in meters")
+    bounds: Bounds
+    grid: Grid
+    values: list[list[float]] = Field(
+        description="Salinity values [lat_index][lon_index] in PSU, aligned with grid axes"
+    )
+
+
 class CurrentFieldResponse(BaseModel):
     variable: Literal["current"] = "current"
     unit: Literal["m/s"] = "m/s"

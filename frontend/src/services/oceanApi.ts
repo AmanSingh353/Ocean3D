@@ -4,6 +4,7 @@ import type {
   ApiInstrumentProfile,
   ApiInstrumentSummary,
   ApiModelMetadata,
+  ApiSalinityField,
   ApiTemperatureField,
 } from '../types/api'
 import type {
@@ -124,18 +125,42 @@ export function getCurrent(
   return getCurrentField(depth, date, signal)
 }
 
+export function getSalinityField(
+  depth: number,
+  date: string,
+  signal?: AbortSignal,
+): Promise<ApiSalinityField> {
+  const clampedDepth = Math.max(0, Math.min(1000, Math.round(depth)))
+  const params = new URLSearchParams({
+    depth: String(clampedDepth),
+    date: toDateParam(date),
+  })
+  return request<ApiSalinityField>(`/api/salinity?${params}`, signal)
+}
+
+/** Alias for getSalinityField. */
+export function getSalinity(
+  depth: number,
+  date: string,
+  signal?: AbortSignal,
+): Promise<ApiSalinityField> {
+  return getSalinityField(depth, date, signal)
+}
+
 /** Route ocean field requests to the correct backend endpoint by variable. */
 export function getOceanField(
   variable: OceanVariable,
   depth: number,
   date: string,
   signal?: AbortSignal,
-): Promise<ApiTemperatureField | ApiCurrentField> {
+): Promise<ApiTemperatureField | ApiCurrentField | ApiSalinityField> {
   switch (variable) {
     case 'temperature':
       return getTemperature(depth, date, signal)
     case 'current':
       return getCurrent(depth, date, signal)
+    case 'salinity':
+      return getSalinity(depth, date, signal)
   }
 }
 
