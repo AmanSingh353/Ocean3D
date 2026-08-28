@@ -12,21 +12,15 @@ import {
 import {
   applyTemperatureFieldToGeometry,
   getTemperatureRange,
-  sampleTemperatureField,
 } from '../../utils/temperatureField'
-import { temperatureToColor } from '../../utils/temperatureColor'
 import {
   applySalinityFieldToGeometry,
   getSalinityRange,
-  sampleSalinityField,
 } from '../../utils/salinityField'
-import { salinityToColor } from '../../utils/salinityColor'
 import {
   applyChlorophyllFieldToGeometry,
   getChlorophyllRange,
-  sampleChlorophyllField,
 } from '../../utils/chlorophyllField'
-import { chlorophyllToColor } from '../../utils/chlorophyllColor'
 import { InstrumentMarker } from './InstrumentMarker'
 import { AnalysisColorbar } from './AnalysisColorbar'
 import { ChlorophyllColorbar } from './ChlorophyllColorbar'
@@ -37,21 +31,24 @@ import { VisualizationToolbar, type ViewMode } from './VisualizationToolbar'
 import type { AnalysisMode, SpatialAnalysisSnapshot } from '../../types/analysis'
 import { applySpatialAnalysisToGeometry, applyNeutralOceanGeometry } from '../../utils/spatialAnalysisField'
 import { usesSpatialMeshOverlay } from '../../utils/spatialValidation'
-import { DEFAULT_REGION } from '../../data/defaults'
+import { defaultModelGrid } from '../../data/defaults'
 import { INDIAN_OCEAN_COASTLINE, INDIAN_OCEAN_LAND } from '../../data/indianOceanMap'
 import {
   createCoastlineGeometryFromGeoJSON,
   createGraticuleGeometry,
   createLandGeometriesFromGeoJSON,
 } from '../../utils/geoJsonMap'
+import { createOceanBaseGeometry } from '../../utils/oceanGeometry'
 import {
-  createDepthSliceGeometry,
-  createOceanBaseGeometry,
-  createViewSurfaceGeometry,
-} from '../../utils/oceanGeometry'
+  createModelGridGeometry,
+  getModelGridMeta,
+  gridsEqual,
+} from '../../utils/modelGridGeometry'
+import { createGeoDebugGuideGeometry } from '../../utils/geoDebugGuide'
+import { GeoDebugLabel } from './GeoDebugLabel'
 import {
   INDIAN_OCEAN_VIEW_BOUNDS,
-  GEO_REFERENCE_Y,
+  GEO_MARKER_Y,
   latLonToSceneXZ,
   latLonToSceneXYZ,
   projectSceneToScreen,
@@ -97,6 +94,10 @@ interface MarkerScreenPosition {
   visible: boolean
 }
 
+/** ARGO-014 verification coordinates (backend source of truth). */
+const ARGO_014_LAT = 15.8
+const ARGO_014_LON = 76.1
+
 export function OceanViewer({
   selectedVariable,
   selectedDepth,
@@ -109,7 +110,7 @@ export function OceanViewer({
   showArgo,
   showGliders,
   showCurrents,
-  verticalExaggeration,
+  verticalExaggeration: _verticalExaggeration,
   selectedInstrumentId,
   instruments,
   temperatureField,
@@ -147,16 +148,20 @@ export function OceanViewer({
     camera: THREE.PerspectiveCamera
     renderer: THREE.WebGLRenderer
     controls: OrbitControls
+    geoGroup: THREE.Group
     oceanMesh: THREE.Mesh
-    depthSlice: THREE.Mesh
+    geoDebugGuide: THREE.LineSegments
     currents: THREE.Group
   } | null>(null)
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 })
 
   const isTemperatureMode = selectedVariable === 'temperature'
   const isCurrentMode = selectedVariable === 'current'
   const isSalinityMode = selectedVariable === 'salinity'
   const isChlorophyllMode = selectedVariable === 'chlorophyll'
   const isScalarFieldMode = isTemperatureMode || isSalinityMode || isChlorophyllMode
+  void _verticalExaggeration
+  void isScalarFieldMode
   const isRegionalValidation = analysisMode === 'regionalValidation'
   const useSpatialMesh = usesSpatialMeshOverlay(analysisMode, validationLayerEnabled)
   const meshOverlayMode = isRegionalValidation ? 'absoluteError' : analysisMode
@@ -252,64 +257,42 @@ export function OceanViewer({
     mat.opacity = effectiveOpacity
     mat.visible = effectiveOpacity > 0
 
-    refs.depthSlice.visible = modelLayerEnabled && baseOpacity > 0 && isScalarFieldMode
-    const sliceMat = refs.depthSlice.material as THREE.MeshBasicMaterial
-    sliceMat.opacity = isScalarFieldMode ? Math.min(1, baseOpacity + 0.15) : 0
-
-    refs.oceanMesh.scale.y = verticalExaggeration * 0.5
-    const baseY = -4 * verticalExaggeration * 0.5
-    refs.oceanMesh.position.y = baseY
-    refs.depthSlice.position.y =
-      baseY + (selectedDepth / 1000) * 4 * verticalExaggeration * 0.5
-
-    if (temperatureField && temperatureRange && isTemperatureMode) {
-      const centerLat =
-        (temperatureField.bounds.lat_min + temperatureField.bounds.lat_max) / 2
-      const centerLon =
-        (temperatureField.bounds.lon_min + temperatureField.bounds.lon_max) / 2
-      const depthTemp = sampleTemperatureField(temperatureField, centerLat, centerLon)
-      sliceMat.color = temperatureToColor(
-        depthTemp,
-        temperatureRange.min,
-        temperatureRange.max,
-      )
-    }
-
-    if (salinityField && salinityRange && isSalinityMode) {
-      const centerLat =
-        (salinityField.bounds.lat_min + salinityField.bounds.lat_max) / 2
-      const centerLon =
-        (salinityField.bounds.lon_min + salinityField.bounds.lon_max) / 2
-      const depthSalinity = sampleSalinityField(salinityField, centerLat, centerLon)
-      sliceMat.color = salinityToColor(
-        depthSalinity,
-        salinityRange.min,
-        salinityRange.max,
-      )
-    }
-
-    if (chlorophyllField && chlorophyllRange && isChlorophyllMode) {
-      const centerLat =
-        (chlorophyllField.bounds.lat_min + chlorophyllField.bounds.lat_max) / 2
-      const centerLon =
-        (chlorophyllField.bounds.lon_min + chlorophyllField.bounds.lon_max) / 2
-      const depthChl = sampleChlorophyllField(chlorophyllField, centerLat, centerLon)
-      sliceMat.color = chlorophyllToColor(
-        depthChl,
-        chlorophyllRange.min,
-        chlorophyllRange.max,
-      )
-    }
+    refs.oceanMesh.scale.set(1, 1, 1)
+    refs.oceanMesh.position.set(0, 0, 0)
 
     refs.currents.visible = showCurrents
-    refs.currents.scale.setScalar(isCurrentMode && showCurrents ? 1.2 : 1)
+    refs.currents.scale.set(1, 1, 1)
   }, [
-    modelLayerEnabled, modelOpacity, verticalExaggeration, selectedDepth,
-    showCurrents, temperatureField, temperatureRange,
-    salinityField, salinityRange,
-    chlorophyllField, chlorophyllRange, isScalarFieldMode,
-    isTemperatureMode, isSalinityMode, isChlorophyllMode, isCurrentMode,
+    modelLayerEnabled, modelOpacity, showCurrents,
+    isCurrentMode,
   ])
+
+  const activeModelGrid = useMemo(() => {
+    if (isTemperatureMode && temperatureField) return temperatureField.grid
+    if (isSalinityMode && salinityField) return salinityField.grid
+    if (isChlorophyllMode && chlorophyllField) return chlorophyllField.grid
+    if (isCurrentMode && currentField) return currentField.grid
+    return defaultModelGrid()
+  }, [
+    isTemperatureMode,
+    isSalinityMode,
+    isChlorophyllMode,
+    isCurrentMode,
+    temperatureField,
+    salinityField,
+    chlorophyllField,
+    currentField,
+  ])
+
+  // Keep model mesh aligned to API lat/lon grid nodes
+  useEffect(() => {
+    const refs = sceneRef.current
+    if (!refs) return
+    const meta = getModelGridMeta(refs.oceanMesh.geometry)
+    if (meta && gridsEqual(meta.grid, activeModelGrid)) return
+    refs.oceanMesh.geometry.dispose()
+    refs.oceanMesh.geometry = createModelGridGeometry(activeModelGrid)
+  }, [activeModelGrid])
 
   // Update vertex colors when the API temperature field changes — not in the render loop
   useEffect(() => {
@@ -335,7 +318,7 @@ export function OceanViewer({
       temperatureField,
       temperatureRange,
     )
-  }, [temperatureField, temperatureRange, isTemperatureMode, meshOverlayReady, spatialAnalysis, meshOverlayMode, meshLegend])
+  }, [temperatureField, temperatureRange, isTemperatureMode, meshOverlayReady, spatialAnalysis, meshOverlayMode, meshLegend, activeModelGrid])
 
   // Update vertex colors when the API salinity field changes
   useEffect(() => {
@@ -361,7 +344,7 @@ export function OceanViewer({
       salinityField,
       salinityRange,
     )
-  }, [salinityField, salinityRange, isSalinityMode, meshOverlayReady, spatialAnalysis, meshOverlayMode, meshLegend])
+  }, [salinityField, salinityRange, isSalinityMode, meshOverlayReady, spatialAnalysis, meshOverlayMode, meshLegend, activeModelGrid])
 
   // Update vertex colors when the API chlorophyll field changes
   useEffect(() => {
@@ -387,7 +370,7 @@ export function OceanViewer({
       chlorophyllField,
       chlorophyllRange,
     )
-  }, [chlorophyllField, chlorophyllRange, isChlorophyllMode, meshOverlayReady, spatialAnalysis, meshOverlayMode, meshLegend])
+  }, [chlorophyllField, chlorophyllRange, isChlorophyllMode, meshOverlayReady, spatialAnalysis, meshOverlayMode, meshLegend, activeModelGrid])
 
   // Current variable: apply spatial analysis overlay at platform locations
   useEffect(() => {
@@ -409,7 +392,7 @@ export function OceanViewer({
       return
     }
     applyNeutralOceanGeometry(refs.oceanMesh.geometry)
-  }, [currentField, isCurrentMode, meshOverlayReady, spatialAnalysis, meshOverlayMode, meshLegend])
+  }, [currentField, isCurrentMode, meshOverlayReady, spatialAnalysis, meshOverlayMode, meshLegend, activeModelGrid])
 
   // Update current vector arrows when API current field changes
   useEffect(() => {
@@ -454,6 +437,10 @@ export function OceanViewer({
     dirLight.position.set(10, 24, 8)
     scene.add(dirLight)
 
+    const geoGroup = new THREE.Group()
+    geoGroup.name = 'geographic'
+    scene.add(geoGroup)
+
     const baseOceanMesh = new THREE.Mesh(
       createOceanBaseGeometry(),
       new THREE.MeshPhongMaterial({
@@ -463,8 +450,7 @@ export function OceanViewer({
         side: THREE.DoubleSide,
       }),
     )
-    baseOceanMesh.position.y = -4.1
-    scene.add(baseOceanMesh)
+    geoGroup.add(baseOceanMesh)
 
     const graticule = new THREE.LineSegments(
       createGraticuleGeometry(INDIAN_OCEAN_VIEW_BOUNDS, 10),
@@ -474,7 +460,7 @@ export function OceanViewer({
         opacity: 0.35,
       }),
     )
-    scene.add(graticule)
+    geoGroup.add(graticule)
 
     const landMaterial = new THREE.MeshPhongMaterial({
       color: 0x0c1a22,
@@ -483,7 +469,7 @@ export function OceanViewer({
       side: THREE.DoubleSide,
     })
     for (const landGeom of createLandGeometriesFromGeoJSON(INDIAN_OCEAN_LAND)) {
-      scene.add(new THREE.Mesh(landGeom, landMaterial))
+      geoGroup.add(new THREE.Mesh(landGeom, landMaterial))
     }
 
     const coastlineGeometry = createCoastlineGeometryFromGeoJSON(INDIAN_OCEAN_COASTLINE)
@@ -495,9 +481,9 @@ export function OceanViewer({
         opacity: 0.85,
       }),
     )
-    scene.add(coastlines)
+    geoGroup.add(coastlines)
 
-    const oceanGeometry = createViewSurfaceGeometry(INDIAN_OCEAN_VIEW_BOUNDS, 32, 24)
+    const oceanGeometry = createModelGridGeometry(defaultModelGrid())
     const oceanMesh = new THREE.Mesh(
       oceanGeometry,
       new THREE.MeshPhongMaterial({
@@ -509,24 +495,23 @@ export function OceanViewer({
         depthWrite: false,
       }),
     )
-    oceanMesh.position.y = -4
-    scene.add(oceanMesh)
+    geoGroup.add(oceanMesh)
 
-    const depthSlice = new THREE.Mesh(
-      createDepthSliceGeometry(DEFAULT_REGION),
-      new THREE.MeshBasicMaterial({
-        color: 0x19bcd6,
+    const geoDebugGuide = new THREE.LineSegments(
+      createGeoDebugGuideGeometry(ARGO_014_LAT, ARGO_014_LON),
+      new THREE.LineBasicMaterial({
+        color: 0xffcc66,
         transparent: true,
-        opacity: 0.55,
-        side: THREE.DoubleSide,
+        opacity: 0.9,
       }),
     )
-    scene.add(depthSlice)
+    geoDebugGuide.visible = false
+    geoGroup.add(geoDebugGuide)
 
     const currents = new THREE.Group()
-    scene.add(currents)
+    geoGroup.add(currents)
 
-    sceneRef.current = { camera, renderer, controls, oceanMesh, depthSlice, currents }
+    sceneRef.current = { camera, renderer, controls, geoGroup, oceanMesh, geoDebugGuide, currents }
 
     const pendingField = temperatureFieldRef.current
     if (pendingField) {
@@ -553,12 +538,13 @@ export function OceanViewer({
 
       markerFrame += 1
       if (markerFrame % 1 === 0) {
+        setCanvasSize({ width: host.clientWidth, height: host.clientHeight })
         const next: Record<string, MarkerScreenPosition> = {}
         for (const inst of instrumentsRef.current) {
           const { x, y, z } = latLonToSceneXYZ(
             inst.latitude,
             inst.longitude,
-            GEO_REFERENCE_Y + 0.35,
+            GEO_MARKER_Y,
             INDIAN_OCEAN_VIEW_BOUNDS,
           )
           next[inst.id] = projectSceneToScreen(
@@ -601,6 +587,19 @@ export function OceanViewer({
   }, [])
 
   useEffect(() => { updateOceanAppearance() }, [updateOceanAppearance])
+
+  const showGeoDebug = selectedInstrumentId?.toUpperCase() === 'ARGO-014'
+
+  useEffect(() => {
+    const refs = sceneRef.current
+    if (!refs) return
+    refs.geoDebugGuide.visible = showGeoDebug
+  }, [showGeoDebug])
+
+  const argo014ScenePos = useMemo(
+    () => latLonToSceneXYZ(ARGO_014_LAT, ARGO_014_LON, GEO_MARKER_Y, INDIAN_OCEAN_VIEW_BOUNDS),
+    [],
+  )
 
   useEffect(() => {
     const refs = sceneRef.current
@@ -757,6 +756,18 @@ export function OceanViewer({
         />
       </div>
       <div className="ocean-viewer__markers">
+        {showGeoDebug ? (
+          <GeoDebugLabel
+            lat={ARGO_014_LAT}
+            lon={ARGO_014_LON}
+            sceneX={argo014ScenePos.x}
+            sceneY={argo014ScenePos.y}
+            sceneZ={argo014ScenePos.z}
+            camera={sceneRef.current?.camera ?? null}
+            hostWidth={canvasSize.width}
+            hostHeight={canvasSize.height}
+          />
+        ) : null}
         {visibleInstruments.map((inst) => {
           const spatialPoint = spatialPointById.get(inst.id)
           return (

@@ -15,3 +15,16 @@ export const DEFAULT_REGION = {
   lon_min: 65,
   lon_max: 85,
 } as const
+
+/** Default API model grid (integer degree nodes, mirrors backend). */
+export function defaultModelGrid(): { latitudes: number[]; longitudes: number[] } {
+  const latitudes: number[] = []
+  for (let lat = DEFAULT_REGION.lat_min; lat <= DEFAULT_REGION.lat_max; lat++) {
+    latitudes.push(lat)
+  }
+  const longitudes: number[] = []
+  for (let lon = DEFAULT_REGION.lon_min; lon <= DEFAULT_REGION.lon_max; lon++) {
+    longitudes.push(lon)
+  }
+  return { latitudes, longitudes }
+}

@@ -2,7 +2,9 @@ import * as THREE from 'three'
 import type { ApiSalinityField } from '../types/api'
 import { salinityToColor, type SalinityRange } from './salinityColor'
 import { sceneToLatLon } from './temperatureField'
-import { isInsideModelBounds, setOceanBaseVertexColor } from './fieldSampling'
+import { colorGridVertices, isInsideModelBounds, setOceanBaseVertexColor } from './fieldSampling'
+import { getModelGridMeta, paintModelGridFromValues } from './modelGridGeometry'
+import { isOnLand } from './landMask'
 
 /** Compute min/max from the API grid, ignoring null/NaN values. */
 export function getSalinityRange(field: ApiSalinityField): SalinityRange {
@@ -75,12 +77,31 @@ export function applySalinityFieldToGeometry(
 ): void {
   const positions = geometry.attributes.position
   const colors = geometry.attributes.color as THREE.BufferAttribute
+  const meta = getModelGridMeta(geometry)
+
+  if (meta?.cellVertexRanges) {
+    paintModelGridFromValues(geometry, field.values, (salinity) => {
+      const c = salinityToColor(salinity, range.min, range.max)
+      return { r: c.r, g: c.g, b: c.b }
+    })
+    return
+  }
+
+  if (meta) {
+    colorGridVertices(colors, meta.grid, (j, i) => {
+      const salinity = field.values[j][i]
+      const c = salinityToColor(salinity, range.min, range.max)
+      return { r: c.r, g: c.g, b: c.b }
+    })
+    colors.needsUpdate = true
+    return
+  }
 
   for (let i = 0; i < positions.count; i++) {
     const x = positions.getX(i)
     const z = positions.getZ(i)
     const { lat, lon } = sceneToLatLon(x, z, field.bounds)
-    if (!isInsideModelBounds(lat, lon, field.bounds)) {
+    if (isOnLand(lat, lon) || !isInsideModelBounds(lat, lon, field.bounds)) {
       setOceanBaseVertexColor(colors, i)
       continue
     }

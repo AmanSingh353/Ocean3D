@@ -15,6 +15,12 @@ export const OCEAN_BASE_VERTEX_RGB = { r: 0.035, g: 0.078, b: 0.11 } as const
 /** Shared Y plane for geographic map layers (land, coastlines, graticule). */
 export const GEO_REFERENCE_Y = 0
 
+/** Model scalar field surface (same geographic plane as coastlines). */
+export const GEO_MODEL_SURFACE_Y = GEO_REFERENCE_Y + 0.03
+
+/** Observation marker height above the geographic reference plane. */
+export const GEO_MARKER_Y = GEO_REFERENCE_Y + 0.35
+
 /** Three.js horizontal scene size (X axis = longitude). */
 export const GEO_SCENE_WIDTH = 54
 

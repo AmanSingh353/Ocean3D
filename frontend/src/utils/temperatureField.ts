@@ -5,7 +5,9 @@ import {
   type TemperatureRange,
 } from './temperatureColor'
 import { sceneXZToLatLon, INDIAN_OCEAN_VIEW_BOUNDS } from './geoProjection'
-import { isInsideModelBounds, setOceanBaseVertexColor } from './fieldSampling'
+import { colorGridVertices, isInsideModelBounds, setOceanBaseVertexColor } from './fieldSampling'
+import { getModelGridMeta, paintModelGridFromValues } from './modelGridGeometry'
+import { isOnLand } from './landMask'
 
 /** Map Three.js scene X/Z to geographic coordinates within the view domain. */
 export function sceneToLatLon(
@@ -87,12 +89,31 @@ export function applyTemperatureFieldToGeometry(
 ): void {
   const positions = geometry.attributes.position
   const colors = geometry.attributes.color as THREE.BufferAttribute
+  const meta = getModelGridMeta(geometry)
+
+  if (meta?.cellVertexRanges) {
+    paintModelGridFromValues(geometry, field.values, (temp) => {
+      const c = temperatureToColor(temp, range.min, range.max)
+      return { r: c.r, g: c.g, b: c.b }
+    })
+    return
+  }
+
+  if (meta) {
+    colorGridVertices(colors, meta.grid, (j, i) => {
+      const temp = field.values[j][i]
+      const c = temperatureToColor(temp, range.min, range.max)
+      return { r: c.r, g: c.g, b: c.b }
+    })
+    colors.needsUpdate = true
+    return
+  }
 
   for (let i = 0; i < positions.count; i++) {
     const x = positions.getX(i)
     const z = positions.getZ(i)
     const { lat, lon } = sceneToLatLon(x, z, field.bounds)
-    if (!isInsideModelBounds(lat, lon, field.bounds)) {
+    if (isOnLand(lat, lon) || !isInsideModelBounds(lat, lon, field.bounds)) {
       setOceanBaseVertexColor(colors, i)
       continue
     }

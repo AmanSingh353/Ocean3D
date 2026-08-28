@@ -16,6 +16,8 @@ import { getTemperatureRange, sampleTemperatureField, sceneToLatLon } from './te
 import { temperatureToColor } from './temperatureColor'
 import { findNearestSpatialPoint, getAnalysisValueFromPoint } from './spatialValidation'
 import { isInsideModelBounds, setOceanBaseVertexColor } from './fieldSampling'
+import { getModelGridMeta } from './modelGridGeometry'
+import { isOnLand } from './landMask'
 
 const DIM_FACTOR = 0.28
 
@@ -110,18 +112,15 @@ export function applySpatialAnalysisToGeometry(input: SpatialAnalysisFieldInput)
   const positions = geometry.attributes.position
   const colors = geometry.attributes.color as THREE.BufferAttribute
   const modelRange = getModelRange(variable, temperatureField, salinityField, chlorophyllField)
+  const meta = getModelGridMeta(geometry)
 
-  for (let i = 0; i < positions.count; i++) {
-    const x = positions.getX(i)
-    const z = positions.getZ(i)
-    const { lat, lon } = sceneToLatLon(x, z, bounds)
-    if (!isInsideModelBounds(lat, lon, bounds)) {
-      setOceanBaseVertexColor(colors, i)
-      continue
+  const paintVertex = (index: number, lat: number, lon: number): void => {
+    if (isOnLand(lat, lon) || !isInsideModelBounds(lat, lon, bounds)) {
+      setOceanBaseVertexColor(colors, index)
+      return
     }
 
     const nearest = findNearestSpatialPoint(lat, lon, points)
-
     let color: THREE.Color
 
     if (nearest) {
@@ -156,7 +155,42 @@ export function applySpatialAnalysisToGeometry(input: SpatialAnalysisFieldInput)
       color = MISSING_VERTEX_COLOR.clone()
     }
 
-    colors.setXYZ(i, color.r, color.g, color.b)
+    colors.setXYZ(index, color.r, color.g, color.b)
+  }
+
+  if (meta?.cellVertexRanges) {
+    const { grid, cellVertexRanges } = meta
+    for (const cell of cellVertexRanges) {
+      const lat =
+        (grid.latitudes[cell.latIndex] + grid.latitudes[cell.latIndex + 1]) / 2
+      const lon =
+        (grid.longitudes[cell.lonIndex] + grid.longitudes[cell.lonIndex + 1]) / 2
+      paintVertex(cell.start, lat, lon)
+      for (let v = cell.start + 1; v < cell.start + cell.count; v++) {
+        colors.setXYZ(v, colors.getX(cell.start), colors.getY(cell.start), colors.getZ(cell.start))
+      }
+    }
+    colors.needsUpdate = true
+    return
+  }
+
+  if (meta) {
+    const { grid } = meta
+    const cols = grid.longitudes.length
+    for (let j = 0; j < grid.latitudes.length; j++) {
+      for (let i = 0; i < grid.longitudes.length; i++) {
+        paintVertex(j * cols + i, grid.latitudes[j], grid.longitudes[i])
+      }
+    }
+    colors.needsUpdate = true
+    return
+  }
+
+  for (let i = 0; i < positions.count; i++) {
+    const x = positions.getX(i)
+    const z = positions.getZ(i)
+    const { lat, lon } = sceneToLatLon(x, z, bounds)
+    paintVertex(i, lat, lon)
   }
 
   colors.needsUpdate = true
