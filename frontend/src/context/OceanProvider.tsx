@@ -7,28 +7,29 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { MODEL_CONFIG } from '../data/mockModel'
+import { DEFAULT_DATES, DEFAULT_DEPTHS } from '../data/defaults'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import {
   formatObservationTime,
   getComparisonAtDepth,
-  getChlorophyll,
-  getCurrent,
   getInstrument,
   getInstrumentProfile,
   getInstruments,
   getModelMetadata,
-  getSalinity,
-  getTemperature,
+  getOceanFieldAtDepth,
   isAbortError,
   mapInstrument,
   mapInstrumentProfile,
   mapInstrumentSummary,
-  snapDepth,
   toDateParam,
 } from '../services/oceanApi'
 import type { AnalysisMode, SpatialAnalysisSnapshot } from '../types/analysis'
-import type { ApiChlorophyllField, ApiCurrentField, ApiSalinityField, ApiTemperatureField } from '../types/api'
+import type {
+  ApiChlorophyllField,
+  ApiCurrentField,
+  ApiSalinityField,
+  ApiTemperatureField,
+} from '../types/api'
 import type { OceanContextValue } from '../types/oceanState'
 import type {
   ComparisonStats,
@@ -36,13 +37,16 @@ import type {
   InstrumentProfile,
   OceanVariable,
 } from '../types/ocean'
+import { depthTicksFromMetadata, resolveApiDepth } from '../utils/depthUtils'
+import type { CachedOceanField } from '../utils/fieldCache'
+import { fieldCacheKey, OceanFieldCache } from '../utils/fieldCache'
 import { getTemperatureRange } from '../utils/temperatureField'
 import { getCurrentMagnitudeRange } from '../utils/currentField'
 import { getSalinityRange } from '../utils/salinityField'
 import { getChlorophyllRange } from '../utils/chlorophyllField'
 import { computeSpatialAnalysisSnapshot } from '../utils/spatialValidation'
 
-const DEFAULT_DATE = MODEL_CONFIG.dates[MODEL_CONFIG.dates.length - 1]
+const DEFAULT_DATE = DEFAULT_DATES[DEFAULT_DATES.length - 1]
 const DEPTH_DEBOUNCE_MS = 300
 
 export const OceanContext = createContext<OceanContextValue | null>(null)
@@ -52,25 +56,23 @@ interface OceanProviderProps {
 }
 
 export function OceanProvider({ children }: OceanProviderProps) {
-  const [availableDates, setAvailableDates] = useState<string[]>(MODEL_CONFIG.dates)
-  const [selectedDate, setSelectedDate] = useState(DEFAULT_DATE)
+  const [availableDates, setAvailableDates] = useState<string[]>([...DEFAULT_DATES])
+  const [availableDepths, setAvailableDepths] = useState<number[]>([...DEFAULT_DEPTHS])
+  const [regionLabel, setRegionLabel] = useState('INDIAN OCEAN')
+  const [selectedDate, setSelectedDate] = useState<string>(DEFAULT_DATE)
   const [selectedDepth, setSelectedDepth] = useState(100)
   const [selectedVariable, setSelectedVariable] =
     useState<OceanVariable>('temperature')
-  const [selectedInstrumentId, setSelectedInstrumentId] = useState<string | null>(
-    null,
-  )
+  const [selectedInstrumentId, setSelectedInstrumentId] = useState<string | null>(null)
+  const [apiModelDepth, setApiModelDepth] = useState(100)
 
   const [oceanData, setOceanData] = useState<ApiTemperatureField | null>(null)
   const [currentData, setCurrentData] = useState<ApiCurrentField | null>(null)
   const [salinityData, setSalinityData] = useState<ApiSalinityField | null>(null)
   const [chlorophyllData, setChlorophyllData] = useState<ApiChlorophyllField | null>(null)
   const [instruments, setInstruments] = useState<Instrument[]>([])
-  const [selectedInstrument, setSelectedInstrument] = useState<Instrument | null>(
-    null,
-  )
-  const [instrumentProfile, setInstrumentProfile] =
-    useState<InstrumentProfile | null>(null)
+  const [selectedInstrument, setSelectedInstrument] = useState<Instrument | null>(null)
+  const [instrumentProfile, setInstrumentProfile] = useState<InstrumentProfile | null>(null)
   const [comparison, setComparison] = useState<ComparisonStats | null>(null)
   const [observationTime, setObservationTime] = useState('')
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('model')
@@ -78,11 +80,14 @@ export function OceanProvider({ children }: OceanProviderProps) {
   const [spatialProfilesError, setSpatialProfilesError] = useState<string | null>(null)
   const [spatialProfilesVersion, setSpatialProfilesVersion] = useState(0)
 
+  const [isMetadataLoading, setIsMetadataLoading] = useState(true)
+  const [metadataError, setMetadataError] = useState<string | null>(null)
   const [isModelLoading, setIsModelLoading] = useState(false)
   const [isInstrumentsLoading, setIsInstrumentsLoading] = useState(false)
   const [isProfileLoading, setIsProfileLoading] = useState(false)
   const [modelError, setModelError] = useState<string | null>(null)
   const [profileError, setProfileError] = useState<string | null>(null)
+  const [instrumentsError, setInstrumentsError] = useState<string | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
 
   const [colorScaleMin, setColorScaleMin] = useState(8)
@@ -93,15 +98,9 @@ export function OceanProvider({ children }: OceanProviderProps) {
   selectedDepthRef.current = selectedDepth
 
   const profileCacheRef = useRef<
-    Map<
-      string,
-      {
-        instrument: Instrument
-        profile: InstrumentProfile
-        observationTime: string
-      }
-    >
+    Map<string, { instrument: Instrument; profile: InstrumentProfile; observationTime: string }>
   >(new Map())
+  const fieldCacheRef = useRef(new OceanFieldCache())
 
   const profileCacheKey = useCallback(
     (instrumentId: string, date: string) => `${instrumentId}:${toDateParam(date)}`,
@@ -109,11 +108,7 @@ export function OceanProvider({ children }: OceanProviderProps) {
   )
 
   const applyCachedProfile = useCallback(
-    (cached: {
-      instrument: Instrument
-      profile: InstrumentProfile
-      observationTime: string
-    }) => {
+    (cached: { instrument: Instrument; profile: InstrumentProfile; observationTime: string }) => {
       const depth = selectedDepthRef.current
       setSelectedInstrument({ ...cached.instrument, currentDepth: depth })
       setInstrumentProfile(cached.profile)
@@ -123,10 +118,14 @@ export function OceanProvider({ children }: OceanProviderProps) {
   )
 
   const debouncedDepth = useDebouncedValue(selectedDepth, DEPTH_DEBOUNCE_MS)
-  const apiDepth = useMemo(() => snapDepth(debouncedDepth), [debouncedDepth])
-  const apiCurrentDepth = useMemo(
-    () => Math.max(0, Math.min(1000, Math.round(debouncedDepth))),
-    [debouncedDepth],
+  const resolvedApiDepth = useMemo(
+    () => resolveApiDepth(selectedVariable, debouncedDepth, availableDepths),
+    [selectedVariable, debouncedDepth, availableDepths],
+  )
+
+  const depthTicks = useMemo(
+    () => depthTicksFromMetadata(availableDepths),
+    [availableDepths],
   )
 
   const dateIndex = useMemo(() => {
@@ -138,17 +137,14 @@ export function OceanProvider({ children }: OceanProviderProps) {
     () => (oceanData ? getTemperatureRange(oceanData) : null),
     [oceanData],
   )
-
   const currentMagnitudeRange = useMemo(
     () => (currentData ? getCurrentMagnitudeRange(currentData) : null),
     [currentData],
   )
-
   const salinityRange = useMemo(
     () => (salinityData ? getSalinityRange(salinityData) : null),
     [salinityData],
   )
-
   const chlorophyllRange = useMemo(
     () => (chlorophyllData ? getChlorophyllRange(chlorophyllData) : null),
     [chlorophyllData],
@@ -160,6 +156,40 @@ export function OceanProvider({ children }: OceanProviderProps) {
       setColorScaleMax(temperatureRange.max)
     }
   }, [temperatureRange])
+
+  const applyField = useCallback((variable: OceanVariable, field: CachedOceanField) => {
+    switch (variable) {
+      case 'temperature':
+        setOceanData(field as ApiTemperatureField)
+        break
+      case 'current':
+        setCurrentData(field as ApiCurrentField)
+        break
+      case 'salinity':
+        setSalinityData(field as ApiSalinityField)
+        break
+      case 'chlorophyll':
+        setChlorophyllData(field as ApiChlorophyllField)
+        break
+    }
+  }, [])
+
+  const clearField = useCallback((variable: OceanVariable) => {
+    switch (variable) {
+      case 'temperature':
+        setOceanData(null)
+        break
+      case 'current':
+        setCurrentData(null)
+        break
+      case 'salinity':
+        setSalinityData(null)
+        break
+      case 'chlorophyll':
+        setChlorophyllData(null)
+        break
+    }
+  }, [])
 
   const setDateIndex = useCallback(
     (index: number) => {
@@ -185,45 +215,78 @@ export function OceanProvider({ children }: OceanProviderProps) {
   const retryOceanData = useCallback(() => {
     setApiError(null)
     setModelError(null)
+    setProfileError(null)
+    setInstrumentsError(null)
+    setSpatialProfilesError(null)
+    setMetadataError(null)
+    fieldCacheRef.current.clear()
     setRefreshToken((t) => t + 1)
   }, [])
 
-  // Model metadata — populate available dates from API
+  // Model metadata — dates, depths, region from API
   useEffect(() => {
     const controller = new AbortController()
+    setIsMetadataLoading(true)
+    setMetadataError(null)
+
     getModelMetadata(controller.signal)
       .then((metadata) => {
+        if (controller.signal.aborted) return
         const dates = metadata.dates.map((d) => toDateParam(d))
+        const depths = metadata.depths.length > 0 ? metadata.depths : [...DEFAULT_DEPTHS]
         if (dates.length > 0) {
           setAvailableDates(dates)
           setSelectedDate((prev) => (dates.includes(prev) ? prev : dates[dates.length - 1]))
         }
+        setAvailableDepths(depths)
+        setRegionLabel('INDIAN OCEAN')
+        setMetadataError(null)
       })
       .catch((error: unknown) => {
         if (isAbortError(error)) return
         console.error('[Ocean3D] Failed to load model metadata:', error)
+        setMetadataError('Unable to load model metadata. Using defaults.')
       })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsMetadataLoading(false)
+      })
+
     return () => controller.abort()
   }, [refreshToken])
 
-  // Temperature field — only when temperature variable is selected
+  // Unified model field fetch with cache
   useEffect(() => {
-    if (selectedVariable !== 'temperature') return
-
     const controller = new AbortController()
+    const cacheKey = fieldCacheKey(selectedVariable, resolvedApiDepth, selectedDate)
+    const cached = fieldCacheRef.current.get(cacheKey)
+
+    setApiModelDepth(resolvedApiDepth)
+
+    if (cached) {
+      applyField(selectedVariable, cached)
+      setIsModelLoading(false)
+      setModelError(null)
+      return () => controller.abort()
+    }
+
     setIsModelLoading(true)
     setModelError(null)
+    clearField(selectedVariable)
 
-    getTemperature(apiDepth, selectedDate, controller.signal)
+    getOceanFieldAtDepth(selectedVariable, resolvedApiDepth, selectedDate, controller.signal)
       .then((field) => {
         if (controller.signal.aborted) return
-        setOceanData(field)
+        fieldCacheRef.current.set(cacheKey, field)
+        applyField(selectedVariable, field)
+        setApiModelDepth(field.depth ?? resolvedApiDepth)
         setApiError(null)
+        setModelError(null)
       })
       .catch((error: unknown) => {
         if (isAbortError(error) || controller.signal.aborted) return
-        console.error('[Ocean3D] Failed to load temperature field:', error)
-        const message = 'Unable to load ocean data.'
+        console.error('[Ocean3D] Failed to load ocean field:', error)
+        clearField(selectedVariable)
+        const message = 'Unable to load ocean model data.'
         setModelError(message)
         setApiError(message)
       })
@@ -232,110 +295,36 @@ export function OceanProvider({ children }: OceanProviderProps) {
       })
 
     return () => controller.abort()
-  }, [selectedVariable, apiDepth, selectedDate, refreshToken])
-
-  // Current field — only when current variable is selected
-  useEffect(() => {
-    if (selectedVariable !== 'current') return
-
-    const controller = new AbortController()
-    setIsModelLoading(true)
-    setModelError(null)
-
-    getCurrent(apiCurrentDepth, selectedDate, controller.signal)
-      .then((field) => {
-        if (controller.signal.aborted) return
-        setCurrentData(field)
-        setApiError(null)
-      })
-      .catch((error: unknown) => {
-        if (isAbortError(error) || controller.signal.aborted) return
-        console.error('[Ocean3D] Failed to load current field:', error)
-        const message = 'Unable to load ocean data.'
-        setModelError(message)
-        setApiError(message)
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setIsModelLoading(false)
-      })
-
-    return () => controller.abort()
-  }, [selectedVariable, apiCurrentDepth, selectedDate, refreshToken])
-
-  // Salinity field — only when salinity variable is selected
-  useEffect(() => {
-    if (selectedVariable !== 'salinity') return
-
-    const controller = new AbortController()
-    setIsModelLoading(true)
-    setModelError(null)
-
-    getSalinity(apiCurrentDepth, selectedDate, controller.signal)
-      .then((field) => {
-        if (controller.signal.aborted) return
-        setSalinityData(field)
-        setApiError(null)
-      })
-      .catch((error: unknown) => {
-        if (isAbortError(error) || controller.signal.aborted) return
-        console.error('[Ocean3D] Failed to load salinity field:', error)
-        const message = 'Unable to load ocean data.'
-        setModelError(message)
-        setApiError(message)
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setIsModelLoading(false)
-      })
-
-    return () => controller.abort()
-  }, [selectedVariable, apiCurrentDepth, selectedDate, refreshToken])
-
-  // Chlorophyll field — only when chlorophyll variable is selected
-  useEffect(() => {
-    if (selectedVariable !== 'chlorophyll') return
-
-    const controller = new AbortController()
-    setIsModelLoading(true)
-    setModelError(null)
-
-    getChlorophyll(apiCurrentDepth, selectedDate, controller.signal)
-      .then((field) => {
-        if (controller.signal.aborted) return
-        setChlorophyllData(field)
-        setApiError(null)
-      })
-      .catch((error: unknown) => {
-        if (isAbortError(error) || controller.signal.aborted) return
-        console.error('[Ocean3D] Failed to load chlorophyll field:', error)
-        const message = 'Unable to load ocean data.'
-        setModelError(message)
-        setApiError(message)
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setIsModelLoading(false)
-      })
-
-    return () => controller.abort()
-  }, [selectedVariable, apiCurrentDepth, selectedDate, refreshToken])
+  }, [
+    selectedVariable,
+    resolvedApiDepth,
+    selectedDate,
+    refreshToken,
+    applyField,
+    clearField,
+  ])
 
   // Instruments — refetch when date changes
   useEffect(() => {
     const controller = new AbortController()
     setIsInstrumentsLoading(true)
+    setInstrumentsError(null)
 
     getInstruments(selectedDate, controller.signal)
       .then((apiInstruments) => {
         if (controller.signal.aborted) return
         const depth = selectedDepthRef.current
-        setInstruments(
-          apiInstruments.map((item) => mapInstrumentSummary(item, depth)),
-        )
+        setInstruments(apiInstruments.map((item) => mapInstrumentSummary(item, depth)))
+        setInstrumentsError(null)
         setApiError(null)
       })
       .catch((error: unknown) => {
         if (isAbortError(error) || controller.signal.aborted) return
         console.error('[Ocean3D] Failed to load instruments:', error)
-        setApiError('Unable to load ocean data.')
+        setInstruments([])
+        const message = 'Unable to load observation platforms.'
+        setInstrumentsError(message)
+        setApiError(message)
       })
       .finally(() => {
         if (!controller.signal.aborted) setIsInstrumentsLoading(false)
@@ -344,17 +333,12 @@ export function OceanProvider({ children }: OceanProviderProps) {
     return () => controller.abort()
   }, [selectedDate, refreshToken])
 
-  // Sync marker depth locally without refetching
   useEffect(() => {
-    setInstruments((prev) =>
-      prev.map((inst) => ({ ...inst, currentDepth: selectedDepth })),
-    )
-    setSelectedInstrument((prev) =>
-      prev ? { ...prev, currentDepth: selectedDepth } : prev,
-    )
+    setInstruments((prev) => prev.map((inst) => ({ ...inst, currentDepth: selectedDepth })))
+    setSelectedInstrument((prev) => (prev ? { ...prev, currentDepth: selectedDepth } : prev))
   }, [selectedDepth])
 
-  // Instrument detail + profile when selection or date changes
+  // Instrument detail + profile
   useEffect(() => {
     if (!selectedInstrumentId) {
       setSelectedInstrument(null)
@@ -405,7 +389,7 @@ export function OceanProvider({ children }: OceanProviderProps) {
         setSelectedInstrument(mappedInstrument)
         setInstrumentProfile(mappedProfile)
         setObservationTime(formattedTime)
-        setApiError(null)
+        setProfileError(null)
       })
       .catch((error: unknown) => {
         if (isAbortError(error) || controller.signal.aborted) return
@@ -414,7 +398,7 @@ export function OceanProvider({ children }: OceanProviderProps) {
         setInstrumentProfile(null)
         setComparison(null)
         setObservationTime('')
-        setProfileError('Observation data unavailable')
+        setProfileError('No matching observation found.')
       })
       .finally(() => {
         if (!controller.signal.aborted) setIsProfileLoading(false)
@@ -423,7 +407,6 @@ export function OceanProvider({ children }: OceanProviderProps) {
     return () => controller.abort()
   }, [selectedInstrumentId, selectedDate, refreshToken, profileCacheKey, applyCachedProfile])
 
-  // Recompute comparison when depth or selected variable changes (profile already loaded)
   useEffect(() => {
     if (!instrumentProfile) {
       setComparison(null)
@@ -441,7 +424,6 @@ export function OceanProvider({ children }: OceanProviderProps) {
     return map
   }, [instruments, selectedDate, profileCacheKey, spatialProfilesVersion, instrumentProfile, analysisMode])
 
-  // Batch-fetch platform profiles for spatial analysis (reuses profile cache)
   useEffect(() => {
     if (analysisMode === 'model' || instruments.length === 0) {
       setSpatialProfilesLoading(false)
@@ -505,18 +487,23 @@ export function OceanProvider({ children }: OceanProviderProps) {
     )
   }, [analysisMode, instruments, profilesById, selectedDepth, selectedVariable])
 
-  const isLoading = isModelLoading || isInstrumentsLoading
-  const error = apiError ?? modelError
+  const isLoading =
+    isMetadataLoading || isModelLoading || isInstrumentsLoading || isProfileLoading
+  const error = apiError ?? modelError ?? profileError ?? instrumentsError ?? metadataError
 
   const value = useMemo<OceanContextValue>(
     () => ({
       availableDates,
+      availableDepths,
+      depthTicks,
+      regionLabel,
       selectedDate,
       setSelectedDate,
       dateIndex,
       setDateIndex,
       selectedDepth,
       setSelectedDepth,
+      apiModelDepth,
       selectedVariable,
       setSelectedVariable,
       selectedInstrumentId,
@@ -537,12 +524,15 @@ export function OceanProvider({ children }: OceanProviderProps) {
       regionValidation: spatialAnalysis?.region ?? null,
       isSpatialProfilesLoading: spatialProfilesLoading,
       spatialProfilesError,
+      isMetadataLoading,
+      metadataError,
       isModelLoading,
       isInstrumentsLoading,
       isProfileLoading,
       isLoading,
       modelError,
       profileError,
+      instrumentsError,
       apiError,
       error,
       retryOceanData,
@@ -558,10 +548,14 @@ export function OceanProvider({ children }: OceanProviderProps) {
     }),
     [
       availableDates,
+      availableDepths,
+      depthTicks,
+      regionLabel,
       selectedDate,
       dateIndex,
       setDateIndex,
       selectedDepth,
+      apiModelDepth,
       selectedVariable,
       selectedInstrumentId,
       selectedInstrument,
@@ -576,16 +570,18 @@ export function OceanProvider({ children }: OceanProviderProps) {
       comparison,
       observationTime,
       analysisMode,
-      setAnalysisMode,
       spatialAnalysis,
       spatialProfilesLoading,
       spatialProfilesError,
+      isMetadataLoading,
+      metadataError,
       isModelLoading,
       isInstrumentsLoading,
       isProfileLoading,
       isLoading,
       modelError,
       profileError,
+      instrumentsError,
       apiError,
       error,
       retryOceanData,

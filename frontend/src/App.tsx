@@ -104,7 +104,13 @@ function Dashboard() {
         onToggleControls={() => setControlsOpen((v) => !v)}
         onToggleObservation={() => setObservationOpen((v) => !v)}
         header={
-          <Header currentDate={ocean.selectedDate} onFullscreen={toggleFullscreen} />
+          <Header
+            currentDate={ocean.selectedDate}
+            regionLabel={ocean.regionLabel}
+            isLoading={ocean.isLoading}
+            hasError={Boolean(ocean.error)}
+            onFullscreen={toggleFullscreen}
+          />
         }
         controls={
           <ControlPanel
@@ -112,6 +118,9 @@ function Dashboard() {
             onVariableChange={ocean.setSelectedVariable}
             selectedDepth={ocean.selectedDepth}
             onDepthChange={ocean.setSelectedDepth}
+            apiModelDepth={ocean.apiModelDepth}
+            availableDepths={ocean.availableDepths}
+            depthTicks={ocean.depthTicks}
             modelLayerEnabled={modelLayerEnabled}
             onModelLayerChange={setModelLayerEnabled}
             modelOpacity={modelOpacity}
@@ -141,6 +150,9 @@ function Dashboard() {
           <OceanViewer
             selectedVariable={ocean.selectedVariable}
             selectedDepth={ocean.selectedDepth}
+            apiModelDepth={ocean.apiModelDepth}
+            depthTicks={ocean.depthTicks}
+            regionLabel={ocean.regionLabel}
             currentDate={ocean.selectedDate}
             modelOpacity={modelOpacity}
             modelLayerEnabled={modelLayerEnabled}
@@ -175,6 +187,8 @@ function Dashboard() {
             profile={ocean.instrumentProfile}
             comparison={ocean.comparison}
             observationTime={ocean.observationTime}
+            apiModelDepth={ocean.apiModelDepth}
+            selectedDate={ocean.selectedDate}
             profileLoading={ocean.isProfileLoading}
             profileError={ocean.profileError}
             onClearSelection={handleClearInstrument}

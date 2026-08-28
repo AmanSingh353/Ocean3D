@@ -5,6 +5,7 @@ import { getVariableMeta } from '../../data/variableMeta'
 import {
   formatAnalysisTick,
   getAbsoluteErrorGradientCss,
+  getAbsoluteErrorLegendTicks,
   getDifferenceGradientCss,
   getDifferenceLegendTicks,
   getLegendTicks,
@@ -51,23 +52,28 @@ function getGradient(mode: AnalysisMode, variable: OceanVariable): string {
 
 function getExtremeLabels(mode: AnalysisMode): { low: string; high: string } {
   if (mode === 'difference') return { low: 'Negative', high: 'Positive' }
-  if (mode === 'absoluteError') return { low: 'Low', high: 'High' }
+  if (mode === 'absoluteError') return { low: '0', high: 'High' }
   return { low: 'Low', high: 'High' }
 }
 
 export function AnalysisColorbar({ mode, variable, min, max }: AnalysisColorbarProps) {
   const unit = getVariableMeta(variable).unit
+  const title = getTitle(mode, variable)
+  const displayTitle = mode === 'absoluteError' ? 'ABSOLUTE ERROR' : title
+
   const ticks = useMemo(() => {
     if (min == null || max == null) return []
     if (mode === 'difference') return getDifferenceLegendTicks(min, max)
-    return getLegendTicks(min, max)
+    if (mode === 'absoluteError') return getAbsoluteErrorLegendTicks(min, max)
+    return getLegendTicks(min, max).reverse()
   }, [min, max, mode])
+
   const extremes = getExtremeLabels(mode)
 
   if (min == null || max == null) {
     return (
       <div className="analysis-colorbar analysis-colorbar--empty">
-        <span className="analysis-colorbar__title">{getTitle(mode, variable)}</span>
+        <span className="analysis-colorbar__title">{displayTitle}</span>
         <span className="analysis-colorbar__empty">No matched data</span>
       </div>
     )
@@ -76,7 +82,7 @@ export function AnalysisColorbar({ mode, variable, min, max }: AnalysisColorbarP
   return (
     <div className="analysis-colorbar">
       <span className="analysis-colorbar__title">
-        {getTitle(mode, variable)}{' '}
+        {displayTitle}{' '}
         <span className="analysis-colorbar__unit">{unit}</span>
       </span>
       <div className="analysis-colorbar__body">

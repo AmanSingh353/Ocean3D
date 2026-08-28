@@ -15,6 +15,8 @@ import type {
   ProfileSeries,
 } from '../types/ocean'
 import { getVariableMeta } from '../data/variableMeta'
+import { resolveApiDepth } from '../utils/depthUtils'
+import { DEFAULT_DEPTHS } from '../data/defaults'
 import {
   computeValidationStats,
   extractMatchedPairs,
@@ -22,9 +24,11 @@ import {
 
 export { computeValidationStats, computeValidationStats as getComparisonAtDepth }
 
-export const API_BASE_URL = 'http://127.0.0.1:8000'
+export const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
 
-export const API_DEPTHS = [0, 50, 100, 200, 500, 1000] as const
+/** @deprecated Use availableDepths from API metadata via OceanProvider */
+export const API_DEPTHS = DEFAULT_DEPTHS
 
 class ApiError extends Error {
   status: number
@@ -37,9 +41,7 @@ class ApiError extends Error {
 }
 
 function isAbortError(error: unknown): boolean {
-  return (
-    error instanceof DOMException && error.name === 'AbortError'
-  )
+  return error instanceof DOMException && error.name === 'AbortError'
 }
 
 async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
@@ -76,128 +78,96 @@ async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
   }
 }
 
-export function snapDepth(depth: number): number {
-  return API_DEPTHS.reduce((closest, candidate) =>
-    Math.abs(candidate - depth) < Math.abs(closest - depth) ? candidate : closest,
-  )
-}
-
 export function toDateParam(isoOrDate: string): string {
   return isoOrDate.slice(0, 10)
+}
+
+/** @deprecated Use resolveApiDepth from utils/depthUtils */
+export function snapDepth(depth: number, depths: number[] = [...DEFAULT_DEPTHS]): number {
+  return resolveApiDepth('temperature', depth, depths)
 }
 
 export function getModelMetadata(signal?: AbortSignal): Promise<ApiModelMetadata> {
   return request<ApiModelMetadata>('/api/model/metadata', signal)
 }
 
-export function getTemperatureField(
-  depth: number,
+function fieldPath(variable: OceanVariable): string {
+  switch (variable) {
+    case 'temperature':
+      return '/api/model/temperature'
+    case 'current':
+      return '/api/current'
+    case 'salinity':
+      return '/api/salinity'
+    case 'chlorophyll':
+      return '/api/chlorophyll'
+  }
+}
+
+/** Fetch a model field at an already-resolved API depth. */
+export function getOceanFieldAtDepth(
+  variable: OceanVariable,
+  resolvedDepth: number,
   date: string,
   signal?: AbortSignal,
-): Promise<ApiTemperatureField> {
+): Promise<ApiTemperatureField | ApiCurrentField | ApiSalinityField | ApiChlorophyllField> {
   const params = new URLSearchParams({
-    depth: String(snapDepth(depth)),
+    depth: String(resolvedDepth),
     date: toDateParam(date),
   })
-  return request<ApiTemperatureField>(`/api/model/temperature?${params}`, signal)
+  return request(`${fieldPath(variable)}?${params}`, signal)
 }
 
-/** Alias for getTemperatureField — fetches the ocean temperature grid. */
-export function getTemperature(
-  depth: number,
-  date: string,
-  signal?: AbortSignal,
-): Promise<ApiTemperatureField> {
-  return getTemperatureField(depth, date, signal)
-}
-
-export function getCurrentField(
-  depth: number,
-  date: string,
-  signal?: AbortSignal,
-): Promise<ApiCurrentField> {
-  const clampedDepth = Math.max(0, Math.min(1000, Math.round(depth)))
-  const params = new URLSearchParams({
-    depth: String(clampedDepth),
-    date: toDateParam(date),
-  })
-  return request<ApiCurrentField>(`/api/current?${params}`, signal)
-}
-
-/** Alias for getCurrentField. */
-export function getCurrent(
-  depth: number,
-  date: string,
-  signal?: AbortSignal,
-): Promise<ApiCurrentField> {
-  return getCurrentField(depth, date, signal)
-}
-
-export function getSalinityField(
-  depth: number,
-  date: string,
-  signal?: AbortSignal,
-): Promise<ApiSalinityField> {
-  const clampedDepth = Math.max(0, Math.min(1000, Math.round(depth)))
-  const params = new URLSearchParams({
-    depth: String(clampedDepth),
-    date: toDateParam(date),
-  })
-  return request<ApiSalinityField>(`/api/salinity?${params}`, signal)
-}
-
-/** Alias for getSalinityField. */
-export function getSalinity(
-  depth: number,
-  date: string,
-  signal?: AbortSignal,
-): Promise<ApiSalinityField> {
-  return getSalinityField(depth, date, signal)
-}
-
-export function getChlorophyllField(
-  depth: number,
-  date: string,
-  signal?: AbortSignal,
-): Promise<ApiChlorophyllField> {
-  const clampedDepth = Math.max(0, Math.min(1000, Math.round(depth)))
-  const params = new URLSearchParams({
-    depth: String(clampedDepth),
-    date: toDateParam(date),
-  })
-  return request<ApiChlorophyllField>(`/api/chlorophyll?${params}`, signal)
-}
-
-/** Alias for getChlorophyllField. */
-export function getChlorophyll(
-  depth: number,
-  date: string,
-  signal?: AbortSignal,
-): Promise<ApiChlorophyllField> {
-  return getChlorophyllField(depth, date, signal)
-}
-
-/** Route ocean field requests to the correct backend endpoint by variable. */
+/** Resolve depth for variable then fetch the model field. */
 export function getOceanField(
   variable: OceanVariable,
   depth: number,
   date: string,
   signal?: AbortSignal,
+  availableDepths: number[] = [...DEFAULT_DEPTHS],
 ): Promise<ApiTemperatureField | ApiCurrentField | ApiSalinityField | ApiChlorophyllField> {
-  switch (variable) {
-    case 'temperature':
-      return getTemperature(depth, date, signal)
-    case 'current':
-      return getCurrent(depth, date, signal)
-    case 'salinity':
-      return getSalinity(depth, date, signal)
-    case 'chlorophyll':
-      return getChlorophyll(depth, date, signal)
-  }
+  const resolvedDepth = resolveApiDepth(variable, depth, availableDepths)
+  return getOceanFieldAtDepth(variable, resolvedDepth, date, signal)
+}
+
+export function getTemperature(
+  depth: number,
+  date: string,
+  signal?: AbortSignal,
+  availableDepths?: number[],
+): Promise<ApiTemperatureField> {
+  return getOceanField('temperature', depth, date, signal, availableDepths) as Promise<ApiTemperatureField>
+}
+
+export function getCurrent(
+  depth: number,
+  date: string,
+  signal?: AbortSignal,
+  availableDepths?: number[],
+): Promise<ApiCurrentField> {
+  return getOceanField('current', depth, date, signal, availableDepths) as Promise<ApiCurrentField>
+}
+
+export function getSalinity(
+  depth: number,
+  date: string,
+  signal?: AbortSignal,
+  availableDepths?: number[],
+): Promise<ApiSalinityField> {
+  return getOceanField('salinity', depth, date, signal, availableDepths) as Promise<ApiSalinityField>
+}
+
+export function getChlorophyll(
+  depth: number,
+  date: string,
+  signal?: AbortSignal,
+  availableDepths?: number[],
+): Promise<ApiChlorophyllField> {
+  return getOceanField('chlorophyll', depth, date, signal, availableDepths) as Promise<ApiChlorophyllField>
 }
 
 export function getInstruments(
-  date = '2026-08-24',
+  date: string,
   signal?: AbortSignal,
 ): Promise<ApiInstrumentSummary[]> {
   const params = new URLSearchParams({ date: toDateParam(date) })
@@ -206,7 +176,7 @@ export function getInstruments(
 
 export function getInstrument(
   instrumentId: string,
-  date = '2026-08-24',
+  date: string,
   signal?: AbortSignal,
 ): Promise<ApiInstrument> {
   const params = new URLSearchParams({ date: toDateParam(date) })
@@ -218,7 +188,7 @@ export function getInstrument(
 
 export function getInstrumentProfile(
   instrumentId: string,
-  date = '2026-08-24',
+  date: string,
   signal?: AbortSignal,
 ): Promise<ApiInstrumentProfile> {
   const params = new URLSearchParams({ date: toDateParam(date) })
@@ -284,7 +254,6 @@ export function mapInstrumentProfile(api: ApiInstrumentProfile): InstrumentProfi
   }
 }
 
-/** Build profile series for charting from matched API profile levels only. */
 export function getProfileSeries(
   profile: InstrumentProfile,
   variable: OceanVariable,

@@ -3,7 +3,8 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import type { ApiChlorophyllField, ApiCurrentField, ApiSalinityField, ApiTemperatureField } from '../../types/api'
 import type { Instrument, OceanVariable } from '../../types/ocean'
-import { DEPTH_TICKS, VARIABLE_OPTIONS, formatDisplayDate } from '../../data/mockModel'
+import { getVariableMeta } from '../../data/variableMeta'
+import { formatDisplayDate } from '../../utils/dateFormat'
 import {
   applyCurrentFieldToGroup,
   getCurrentMagnitudeRange,
@@ -39,6 +40,9 @@ import { applySpatialAnalysisToGeometry, applyNeutralOceanGeometry } from '../..
 interface OceanViewerProps {
   selectedVariable: OceanVariable
   selectedDepth: number
+  apiModelDepth: number
+  depthTicks: number[]
+  regionLabel: string
   currentDate: string
   modelOpacity: number
   modelLayerEnabled: boolean
@@ -78,6 +82,9 @@ function createIndiaOutline(): THREE.Vector2[] {
 export function OceanViewer({
   selectedVariable,
   selectedDepth,
+  apiModelDepth,
+  depthTicks,
+  regionLabel,
   currentDate,
   modelOpacity,
   modelLayerEnabled,
@@ -157,9 +164,13 @@ export function OceanViewer({
     analysisMode === 'observation' &&
     analysisReady &&
     !spatialAnalysis.hasData
+  const showAbsoluteErrorEmpty =
+    analysisMode === 'absoluteError' &&
+    analysisReady &&
+    !spatialAnalysis.hasData
 
-  const variableMeta = VARIABLE_OPTIONS.find((v) => v.value === selectedVariable)
-  const variableLabel = variableMeta?.label ?? 'Temperature'
+  const variableMeta = getVariableMeta(selectedVariable)
+  const variableLabel = variableMeta.label
 
   const temperatureRange = useMemo(
     () => (temperatureField ? getTemperatureRange(temperatureField) : null),
@@ -538,10 +549,22 @@ export function OceanViewer({
           </div>
         </div>
       )}
+      {showAbsoluteErrorEmpty && (
+        <div className="ocean-viewer__overlay ocean-viewer__overlay--analysis-empty">
+          <div className="view-label view-label--status">
+            No absolute error data available at this depth
+          </div>
+        </div>
+      )}
       <div className="ocean-viewer__overlay ocean-viewer__overlay--label">
         <div className="view-label">
-          <span className="view-label__region">INDIAN OCEAN</span>
+          <span className="view-label__region">{regionLabel}</span>
           <span className="view-label__detail">{variableLabel} · {selectedDepth} m</span>
+          {selectedVariable === 'temperature' && selectedDepth !== apiModelDepth ? (
+            <span className="view-label__detail view-label__detail--hint">
+              Model slice: {apiModelDepth} m
+            </span>
+          ) : null}
           {analysisModeLabel ? (
             <span className="view-label__detail view-label__detail--analysis">{analysisModeLabel}</span>
           ) : null}
@@ -551,8 +574,8 @@ export function OceanViewer({
       <div className="ocean-viewer__overlay ocean-viewer__overlay--depth">
         <div className="depth-scale">
           <span className="depth-scale__title">DEPTH</span>
-          {DEPTH_TICKS.map((d) => (
-            <span key={d} className={`depth-scale__tick ${d === selectedDepth ? 'depth-scale__tick--active' : ''}`}>{d} m</span>
+          {depthTicks.map((d) => (
+            <span key={d} className={`depth-scale__tick ${d === selectedDepth || d === apiModelDepth ? 'depth-scale__tick--active' : ''}`}>{d} m</span>
           ))}
         </div>
       </div>
@@ -618,6 +641,7 @@ export function OceanViewer({
               visible
               onSelect={onSelectInstrument}
               showErrorIndicator={analysisMode === 'difference' || analysisMode === 'absoluteError'}
+              showAbsoluteErrorInTooltip={analysisMode === 'absoluteError'}
               absoluteError={spatialPoint?.absoluteError ?? null}
               maxAbsoluteError={maxRegionAbsoluteError}
               variable={selectedVariable}

@@ -1,4 +1,4 @@
-import { VARIABLE_OPTIONS } from '../../data/mockModel'
+import { VARIABLE_OPTIONS } from '../../data/variableMeta'
 import type { OceanVariable } from '../../types/ocean'
 
 interface VariableSelectorProps {

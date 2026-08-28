@@ -25,6 +25,9 @@ function emptyMessage(
   if (analysisMode === 'observation') {
     return `No observation data available at ${depth} m for ${variable}.`
   }
+  if (analysisMode === 'absoluteError') {
+    return `No absolute error data available at ${depth} m for ${variable}.`
+  }
   return `No matched model and observation samples at ${depth} m for ${variable}.`
 }
 

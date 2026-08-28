@@ -12,6 +12,8 @@ interface ObservationPanelProps {
   observationTime: string
   profileLoading: boolean
   profileError: string | null
+  apiModelDepth: number
+  selectedDate: string
   onClearSelection?: () => void
   analysisMode: AnalysisMode
   regionValidation: RegionValidationStats | null
@@ -29,6 +31,8 @@ export function ObservationPanel({
   observationTime,
   profileLoading,
   profileError,
+  apiModelDepth,
+  selectedDate,
   onClearSelection,
   analysisMode,
   regionValidation,
@@ -94,6 +98,8 @@ export function ObservationPanel({
           selectedVariable={selectedVariable}
           onClearSelection={onClearSelection}
           analysisMode={analysisMode}
+          apiModelDepth={apiModelDepth}
+          selectedDate={selectedDate}
         />
       ) : null}
     </div>

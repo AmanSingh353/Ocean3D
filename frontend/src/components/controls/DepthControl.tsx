@@ -1,18 +1,47 @@
-import { DEPTH_TICKS } from '../../data/mockModel'
 import { Slider } from '../common/Slider'
+import { isDepthSnapped } from '../../utils/depthUtils'
+import type { OceanVariable } from '../../types/ocean'
 
 interface DepthControlProps {
   depth: number
+  apiModelDepth: number
+  selectedVariable: OceanVariable
+  availableDepths: number[]
+  depthTicks: number[]
   onChange: (depth: number) => void
 }
 
-export function DepthControl({ depth, onChange }: DepthControlProps) {
+export function DepthControl({
+  depth,
+  apiModelDepth,
+  selectedVariable,
+  availableDepths,
+  depthTicks,
+  onChange,
+}: DepthControlProps) {
+  const maxDepth = availableDepths.length > 0 ? Math.max(...availableDepths) : 1000
+  const snapped = isDepthSnapped(selectedVariable, depth, apiModelDepth)
+
   return (
     <div className="control-block">
       <label className="control-label">DEPTH</label>
       <div className="depth-value">{depth} m</div>
-      <Slider min={0} max={1000} step={10} value={depth} onChange={onChange} ticks={DEPTH_TICKS} ariaLabel="Depth slider" />
-      <div className="slider__range-labels"><span>0</span><span>1000 m</span></div>
+      {snapped ? (
+        <p className="control-hint">Model field at nearest level: {apiModelDepth} m</p>
+      ) : null}
+      <Slider
+        min={0}
+        max={maxDepth}
+        step={10}
+        value={depth}
+        onChange={onChange}
+        ticks={depthTicks}
+        ariaLabel="Depth slider"
+      />
+      <div className="slider__range-labels">
+        <span>0</span>
+        <span>{maxDepth} m</span>
+      </div>
     </div>
   )
 }

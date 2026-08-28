@@ -1,5 +1,5 @@
 import { Pause, Play, SkipBack, SkipForward } from 'lucide-react'
-import { formatDisplayDate, formatShortDate } from '../../data/mockModel'
+import { formatDisplayDate, formatShortDate } from '../../utils/dateFormat'
 import { Slider } from '../common/Slider'
 
 interface TimelineProps {

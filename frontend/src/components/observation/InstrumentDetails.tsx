@@ -11,6 +11,8 @@ interface InstrumentDetailsProps {
   comparison: ValidationStats | null
   observationTime: string
   selectedVariable: OceanVariable
+  apiModelDepth?: number
+  selectedDate?: string
   onClearSelection?: () => void
   analysisMode: AnalysisMode
 }
@@ -23,6 +25,8 @@ export function InstrumentDetails({
   selectedVariable,
   onClearSelection,
   analysisMode,
+  apiModelDepth,
+  selectedDate,
 }: InstrumentDetailsProps) {
   const typeLabel = instrument.type === 'argo' ? 'ARGO FLOAT' : 'GLIDER'
   const latDir = instrument.latitude >= 0 ? 'N' : 'S'
@@ -100,7 +104,12 @@ export function InstrumentDetails({
         </section>
       )}
       {comparison ? (
-        <ComparisonStatsPanel stats={comparison} analysisMode={analysisMode} />
+        <ComparisonStatsPanel
+          stats={comparison}
+          analysisMode={analysisMode}
+          apiModelDepth={apiModelDepth}
+          selectedDate={selectedDate}
+        />
       ) : (
         <section className="detail-section">
           <p className="control-hint">

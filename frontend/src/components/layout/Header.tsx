@@ -1,12 +1,27 @@
 import { HelpCircle, Maximize2, Settings, Waves } from 'lucide-react'
-import { formatHeaderDate } from '../../data/mockModel'
+import { formatHeaderDate } from '../../utils/dateFormat'
 
 interface HeaderProps {
   currentDate: string
+  regionLabel?: string
+  isLoading?: boolean
+  hasError?: boolean
   onFullscreen: () => void
 }
 
-export function Header({ currentDate, onFullscreen }: HeaderProps) {
+export function Header({
+  currentDate,
+  regionLabel = 'INDIAN OCEAN',
+  isLoading = false,
+  hasError = false,
+  onFullscreen,
+}: HeaderProps) {
+  const statusLabel = hasError ? 'DATA ERROR' : isLoading ? 'LOADING' : 'SYSTEM READY'
+  const statusClass = hasError
+    ? 'header__status header__status--error'
+    : isLoading
+      ? 'header__status header__status--loading'
+      : 'header__status'
   return (
     <header className="header">
       <div className="header__left">
@@ -24,11 +39,11 @@ export function Header({ currentDate, onFullscreen }: HeaderProps) {
         </div>
       </div>
       <div className="header__right">
-        <div className="header__status">
+        <div className={statusClass}>
           <span className="status-dot" />
-          SYSTEM READY
+          {statusLabel}
         </div>
-        <span className="header__meta">INDIAN OCEAN</span>
+        <span className="header__meta">{regionLabel}</span>
         <span className="header__meta header__meta--date">
           {formatHeaderDate(currentDate)}
         </span>

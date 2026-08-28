@@ -1,3 +1,4 @@
+import type { AnalysisMode } from '../../types/analysis'
 import type { Instrument, OceanVariable } from '../../types/ocean'
 import { latLonToScenePercent } from '../../utils/geo'
 import { formatVariableValue } from '../../data/variableMeta'
@@ -10,7 +11,9 @@ interface InstrumentMarkerProps {
   absoluteError?: number | null
   maxAbsoluteError?: number | null
   showErrorIndicator?: boolean
+  showAbsoluteErrorInTooltip?: boolean
   variable?: OceanVariable
+  analysisMode?: AnalysisMode
 }
 
 export function InstrumentMarker({
@@ -21,27 +24,31 @@ export function InstrumentMarker({
   absoluteError,
   maxAbsoluteError,
   showErrorIndicator = false,
+  showAbsoluteErrorInTooltip = false,
   variable = 'temperature',
 }: InstrumentMarkerProps) {
   if (!visible) return null
 
   const pos = latLonToScenePercent(instrument.latitude, instrument.longitude)
   const colorClass = instrument.type === 'argo' ? 'marker--argo' : 'marker--glider'
-  const hasError =
+  const hasMatchedError =
+    absoluteError != null && Number.isFinite(absoluteError)
+  const hasErrorRing =
     showErrorIndicator &&
-    absoluteError != null &&
-    Number.isFinite(absoluteError) &&
+    hasMatchedError &&
     maxAbsoluteError != null &&
     maxAbsoluteError > 0
   const errorScale =
-    hasError && maxAbsoluteError
-      ? 1 + Math.min(1, absoluteError / maxAbsoluteError) * 0.65
+    hasErrorRing && maxAbsoluteError
+      ? 1 + Math.min(1, absoluteError! / maxAbsoluteError) * 0.65
       : 1
+  const showTooltipError =
+    hasMatchedError && (showAbsoluteErrorInTooltip || (selected && showErrorIndicator))
 
   return (
     <button
       type="button"
-      className={`instrument-marker ${colorClass} ${selected ? 'instrument-marker--selected' : ''} ${hasError ? 'instrument-marker--error' : ''}`}
+      className={`instrument-marker ${colorClass} ${selected ? 'instrument-marker--selected' : ''} ${hasErrorRing ? 'instrument-marker--error' : ''}`}
       style={{
         left: `${pos.x}%`,
         top: `${pos.y}%`,
@@ -56,7 +63,7 @@ export function InstrumentMarker({
       aria-label={`Select ${instrument.name}`}
       aria-pressed={selected}
     >
-      {hasError ? (
+      {hasErrorRing ? (
         <span
           className="instrument-marker__error-ring"
           style={{
@@ -71,10 +78,11 @@ export function InstrumentMarker({
         <span>{instrument.type === 'argo' ? 'Argo Float' : 'Glider'}</span>
         <span>{instrument.latitude.toFixed(1)}°N · {instrument.longitude.toFixed(1)}°E</span>
         <span>Depth: {instrument.currentDepth} m</span>
-        {hasError ? (
-          <span>
-            |Model − Obs|: {formatVariableValue(absoluteError!, variable)}
-          </span>
+        {showTooltipError ? (
+          <span>|Model − Obs|: {formatVariableValue(absoluteError!, variable)}</span>
+        ) : null}
+        {!hasMatchedError && showAbsoluteErrorInTooltip ? (
+          <span>|Model − Obs|: N/A</span>
         ) : null}
       </div>
     </button>

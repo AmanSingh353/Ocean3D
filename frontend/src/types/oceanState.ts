@@ -15,9 +15,15 @@ import type {
 export interface OceanDataState {
   selectedDate: string
   selectedDepth: number
+  /** Depth sent to the model field API for the active variable */
+  apiModelDepth: number
   selectedVariable: OceanVariable
   selectedInstrumentId: string | null
   selectedInstrument: Instrument | null
+  availableDepths: number[]
+  availableDates: string[]
+  depthTicks: number[]
+  regionLabel: string
   oceanData: ApiTemperatureField | null
   currentData: ApiCurrentField | null
   salinityData: ApiSalinityField | null
@@ -31,11 +37,14 @@ export interface OceanDataState {
   regionValidation: RegionValidationStats | null
   isSpatialProfilesLoading: boolean
   spatialProfilesError: string | null
+  isMetadataLoading: boolean
+  metadataError: string | null
   isModelLoading: boolean
   isInstrumentsLoading: boolean
   isProfileLoading: boolean
   modelError: string | null
   profileError: string | null
+  instrumentsError: string | null
   apiError: string | null
 }
 
@@ -51,7 +60,6 @@ export interface OceanDataActions {
 
 export type OceanContextValue = OceanDataState &
   OceanDataActions & {
-    availableDates: string[]
     dateIndex: number
     setDateIndex: (index: number) => void
     colorScaleMin: number

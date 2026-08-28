@@ -38,6 +38,9 @@ interface ControlPanelProps {
   chlorophyllScaleMax?: number
   analysisMode: AnalysisMode
   onAnalysisModeChange: (mode: AnalysisMode) => void
+  apiModelDepth: number
+  availableDepths: number[]
+  depthTicks: number[]
 }
 
 export function ControlPanel(props: ControlPanelProps) {
@@ -46,7 +49,14 @@ export function ControlPanel(props: ControlPanelProps) {
       <h2 className="panel-title">OCEAN CONTROLS</h2>
       <VariableSelector value={props.selectedVariable} onChange={props.onVariableChange} />
       <div className="control-divider" />
-      <DepthControl depth={props.selectedDepth} onChange={props.onDepthChange} />
+      <DepthControl
+        depth={props.selectedDepth}
+        apiModelDepth={props.apiModelDepth}
+        selectedVariable={props.selectedVariable}
+        availableDepths={props.availableDepths}
+        depthTicks={props.depthTicks}
+        onChange={props.onDepthChange}
+      />
       <div className="control-divider" />
       <AnalysisModeControl value={props.analysisMode} onChange={props.onAnalysisModeChange} />
       <div className="control-divider" />

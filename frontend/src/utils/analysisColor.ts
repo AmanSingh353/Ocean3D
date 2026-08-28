@@ -87,11 +87,18 @@ export function getLegendTicks(min: number, max: number, count = 5): number[] {
 /** Symmetric ticks for diverging difference scale — always includes zero when range spans it. */
 export function getDifferenceLegendTicks(min: number, max: number, count = 5): number[] {
   if (!Number.isFinite(min) || !Number.isFinite(max)) return []
-  if (min >= 0 || max <= 0) return getLegendTicks(min, max, count)
+  if (min >= 0 || max <= 0) return getLegendTicks(min, max, count).reverse()
   const ticks = getLegendTicks(min, max, count)
   const mid = Math.floor(count / 2)
   ticks[mid] = 0
-  return ticks
+  return ticks.reverse()
+}
+
+/** Sequential ticks for absolute error — high values at top, zero at bottom. */
+export function getAbsoluteErrorLegendTicks(min: number, max: number, count = 5): number[] {
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return []
+  const ticks = getLegendTicks(min, max, count)
+  return ticks.reverse()
 }
 
 /** Map normalized error magnitude (0–1) to marker accent intensity. */

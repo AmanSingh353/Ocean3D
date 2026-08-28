@@ -5,6 +5,8 @@ import { formatVariableValue } from '../../data/variableMeta'
 interface ComparisonStatsProps {
   stats: ValidationStats
   analysisMode?: AnalysisMode
+  apiModelDepth?: number
+  selectedDate?: string
 }
 
 function formatOptionalValue(
@@ -38,6 +40,7 @@ function statusClass(status: ValidationStats['validationStatus']): string {
 }
 
 function pointDifference(stats: ValidationStats): number | null {
+  if (stats.difference != null) return stats.difference
   if (stats.model == null || stats.observation == null) return null
   return stats.model - stats.observation
 }
@@ -50,6 +53,8 @@ function pointAbsoluteError(stats: ValidationStats): number | null {
 export function ComparisonStatsPanel({
   stats,
   analysisMode = 'model',
+  apiModelDepth,
+  selectedDate,
 }: ComparisonStatsProps) {
   const biasSign = stats.bias != null && stats.bias >= 0 ? '+' : ''
   const difference = pointDifference(stats)
@@ -68,6 +73,13 @@ export function ComparisonStatsPanel({
       <p className="comparison-depth">
         At {stats.comparedDepth} m ({depthMatchLabel(stats.depthMatch)})
       </p>
+      {apiModelDepth != null && stats.variable === 'temperature' && stats.comparedDepth !== apiModelDepth ? (
+        <p className="comparison-depth">Model field depth: {apiModelDepth} m</p>
+      ) : null}
+      {selectedDate ? (
+        <p className="comparison-depth">Model date: {selectedDate}</p>
+      ) : null}
+      <p className="comparison-depth comparison-depth--formula">Difference = Model − Observation</p>
       <div className="stat-grid">
         <div className="stat-item">
           <span className="stat-label">MODEL</span>
@@ -90,14 +102,16 @@ export function ComparisonStatsPanel({
             <span className="stat-hint">Model − Observation</span>
           </div>
         ) : (
-          <div className="stat-item">
-            <span className="stat-label">BIAS</span>
-            <span className="stat-value stat-value--accent">
-              {stats.bias != null
-                ? `${biasSign}${formatVariableValue(stats.bias, stats.variable)}`
-                : 'N/A'}
-            </span>
-          </div>
+          !showAbsErrorHighlight ? (
+            <div className="stat-item">
+              <span className="stat-label">BIAS</span>
+              <span className="stat-value stat-value--accent">
+                {stats.bias != null
+                  ? `${biasSign}${formatVariableValue(stats.bias, stats.variable)}`
+                  : 'N/A'}
+              </span>
+            </div>
+          ) : null
         )}
         {showAbsErrorHighlight ? (
           <div className="stat-item stat-item--highlight">
@@ -105,9 +119,10 @@ export function ComparisonStatsPanel({
             <span className="stat-value stat-value--accent">
               {formatOptionalValue(absError, stats.variable)}
             </span>
+            <span className="stat-hint">At selected depth</span>
           </div>
         ) : null}
-        {!showDifferenceHighlight ? (
+        {!showDifferenceHighlight && !showAbsErrorHighlight ? (
           <div className="stat-item">
             <span className="stat-label">MEAN BIAS</span>
             <span className="stat-value">{formatVariableValue(stats.meanBias, stats.variable)}</span>

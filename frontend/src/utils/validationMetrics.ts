@@ -1,5 +1,6 @@
 import type { InstrumentProfile, OceanVariable, ProfilePoint, ValidationStats } from '../types/ocean'
 import { formatComparisonMetric, getVariableMeta } from '../data/variableMeta'
+import { sampleAtDepth } from './sampleAtDepth'
 
 /** RMSE thresholds per variable — adjust in this file only. */
 export const VALIDATION_RMSE_THRESHOLDS: Record<
@@ -87,44 +88,6 @@ export function getValidationStatus(
   return 'POOR'
 }
 
-/** Linear interpolation at depth using only matched API profile levels. */
-function sampleAtDepth(
-  pairs: MatchedProfilePair[],
-  depth: number,
-): { model: number; observation: number; depthMatch: DepthMatchKind } | null {
-  if (pairs.length === 0) return null
-
-  const exact = pairs.find((p) => p.depth === depth)
-  if (exact) {
-    return { model: exact.model, observation: exact.observation, depthMatch: 'exact' }
-  }
-
-  if (depth < pairs[0].depth || depth > pairs[pairs.length - 1].depth) {
-    return null
-  }
-
-  let lower = pairs[0]
-  let upper = pairs[pairs.length - 1]
-
-  for (let i = 0; i < pairs.length - 1; i++) {
-    if (depth >= pairs[i].depth && depth <= pairs[i + 1].depth) {
-      lower = pairs[i]
-      upper = pairs[i + 1]
-      break
-    }
-  }
-
-  const span = upper.depth - lower.depth
-  if (span <= 0) return null
-
-  const t = (depth - lower.depth) / span
-  return {
-    model: lower.model + t * (upper.model - lower.model),
-    observation: lower.observation + t * (upper.observation - lower.observation),
-    depthMatch: 'interpolated',
-  }
-}
-
 export function computeValidationStats(
   profile: InstrumentProfile,
   depth: number,
@@ -146,6 +109,8 @@ export function computeValidationStats(
   const depthSample = sampleAtDepth(pairs, depth)
   const bias =
     depthSample != null ? depthSample.observation - depthSample.model : null
+  const difference =
+    depthSample != null ? depthSample.model - depthSample.observation : null
 
   return {
     variable,
@@ -161,6 +126,8 @@ export function computeValidationStats(
         ? Number(formatComparisonMetric(depthSample.observation, variable))
         : null,
     bias: bias != null ? Number(formatComparisonMetric(bias, variable)) : null,
+    difference:
+      difference != null ? Number(formatComparisonMetric(difference, variable)) : null,
     meanBias: Number(formatComparisonMetric(meanBias, variable)),
     mae: Number(formatComparisonMetric(mae, variable)),
     rmse: Number(formatComparisonMetric(rmse, variable)),

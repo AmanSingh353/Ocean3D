@@ -57,7 +57,10 @@ export interface ValidationStats {
   depthMatch: DepthMatchKind
   model: number | null
   observation: number | null
+  /** Observation − model at compared depth */
   bias: number | null
+  /** Model − observation at compared depth */
+  difference: number | null
   meanBias: number
   mae: number
   rmse: number

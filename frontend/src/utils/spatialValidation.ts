@@ -6,47 +6,10 @@ import type {
 } from '../types/analysis'
 import type { DepthMatchKind, Instrument, InstrumentProfile, OceanVariable } from '../types/ocean'
 import { getVariableMeta } from '../data/variableMeta'
+import { sampleAtDepth } from './sampleAtDepth'
 import {
   extractMatchedPairs,
-  type MatchedProfilePair,
 } from './validationMetrics'
-
-function sampleAtDepth(
-  pairs: MatchedProfilePair[],
-  depth: number,
-): { model: number; observation: number; depthMatch: DepthMatchKind } | null {
-  if (pairs.length === 0) return null
-
-  const exact = pairs.find((p) => p.depth === depth)
-  if (exact) {
-    return { model: exact.model, observation: exact.observation, depthMatch: 'exact' }
-  }
-
-  if (depth < pairs[0].depth || depth > pairs[pairs.length - 1].depth) {
-    return null
-  }
-
-  let lower = pairs[0]
-  let upper = pairs[pairs.length - 1]
-
-  for (let i = 0; i < pairs.length - 1; i++) {
-    if (depth >= pairs[i].depth && depth <= pairs[i + 1].depth) {
-      lower = pairs[i]
-      upper = pairs[i + 1]
-      break
-    }
-  }
-
-  const span = upper.depth - lower.depth
-  if (span <= 0) return null
-
-  const t = (depth - lower.depth) / span
-  return {
-    model: lower.model + t * (upper.model - lower.model),
-    observation: lower.observation + t * (upper.observation - lower.observation),
-    depthMatch: 'interpolated',
-  }
-}
 
 export function buildSpatialValidationPoint(
   instrument: Instrument,
@@ -185,6 +148,12 @@ export function computeSpatialAnalysisSnapshot(
       const maxAbs = Math.max(...validValues.map(Math.abs))
       legendMin = -maxAbs
       legendMax = maxAbs
+    } else if (mode === 'absoluteError') {
+      legendMin = 0
+      legendMax = Math.max(...validValues)
+      if (legendMax <= 0) {
+        legendMax = 0.001
+      }
     } else {
       legendMin = Math.min(...validValues)
       legendMax = Math.max(...validValues)
