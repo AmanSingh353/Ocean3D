@@ -18,7 +18,7 @@ def test_model_metadata():
     data = response.json()
     assert data["region"]["lat_min"] == 5
     assert data["region"]["lon_max"] == 85
-    assert len(data["variables"]) == 3
+    assert len(data["variables"]) == 4
     assert data["depths"] == [0, 50, 100, 200, 500, 1000]
     assert len(data["dates"]) == 5
 
@@ -82,3 +82,34 @@ def test_temperature_is_deterministic():
     first = client.get("/api/model/temperature?depth=200&date=2026-08-22").json()
     second = client.get("/api/model/temperature?depth=200&date=2026-08-22").json()
     assert first["values"] == second["values"]
+
+
+def test_current_field_defaults():
+    response = client.get("/api/current")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["variable"] == "current"
+    assert data["unit"] == "m/s"
+    assert data["depth"] == 100
+    assert len(data["u"]) == 16
+    assert len(data["v"]) == 16
+    assert len(data["magnitude"]) == 16
+
+
+def test_current_field_with_depth():
+    response = client.get("/api/current?depth=300&date=2026-08-24")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["depth"] == 300
+    assert data["u"][0][0] != 0 or data["v"][0][0] != 0
+
+
+def test_current_field_depth_500_differs_from_100():
+    shallow = client.get("/api/current?depth=100&date=2026-08-24").json()
+    deep = client.get("/api/current?depth=500&date=2026-08-24").json()
+    assert shallow["magnitude"] != deep["magnitude"]
+
+
+def test_current_field_invalid_depth():
+    response = client.get("/api/current?depth=1500&date=2026-08-24")
+    assert response.status_code == 422

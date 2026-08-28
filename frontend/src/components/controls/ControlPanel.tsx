@@ -26,6 +26,8 @@ interface ControlPanelProps {
   colorScaleMin: number
   colorScaleMax: number
   onColorScaleApply: (min: number, max: number) => void
+  currentScaleMin?: number
+  currentScaleMax?: number
 }
 
 export function ControlPanel(props: ControlPanelProps) {
@@ -57,7 +59,10 @@ export function ControlPanel(props: ControlPanelProps) {
       {props.selectedVariable === 'temperature' ? (
         <ColorScaleControl min={props.colorScaleMin} max={props.colorScaleMax} onApply={props.onColorScaleApply} />
       ) : (
-        <CurrentScaleControl />
+        <CurrentScaleControl
+          minSpeed={props.currentScaleMin}
+          maxSpeed={props.currentScaleMax}
+        />
       )}
     </div>
   )

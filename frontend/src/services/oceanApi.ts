@@ -1,4 +1,5 @@
 import type {
+  ApiCurrentField,
   ApiInstrument,
   ApiInstrumentProfile,
   ApiInstrumentSummary,
@@ -9,6 +10,7 @@ import type {
   ComparisonStats,
   Instrument,
   InstrumentProfile,
+  OceanVariable,
 } from '../types/ocean'
 
 export const API_BASE_URL = 'http://127.0.0.1:8000'
@@ -98,6 +100,43 @@ export function getTemperature(
   signal?: AbortSignal,
 ): Promise<ApiTemperatureField> {
   return getTemperatureField(depth, date, signal)
+}
+
+export function getCurrentField(
+  depth: number,
+  date: string,
+  signal?: AbortSignal,
+): Promise<ApiCurrentField> {
+  const clampedDepth = Math.max(0, Math.min(1000, Math.round(depth)))
+  const params = new URLSearchParams({
+    depth: String(clampedDepth),
+    date: toDateParam(date),
+  })
+  return request<ApiCurrentField>(`/api/current?${params}`, signal)
+}
+
+/** Alias for getCurrentField. */
+export function getCurrent(
+  depth: number,
+  date: string,
+  signal?: AbortSignal,
+): Promise<ApiCurrentField> {
+  return getCurrentField(depth, date, signal)
+}
+
+/** Route ocean field requests to the correct backend endpoint by variable. */
+export function getOceanField(
+  variable: OceanVariable,
+  depth: number,
+  date: string,
+  signal?: AbortSignal,
+): Promise<ApiTemperatureField | ApiCurrentField> {
+  switch (variable) {
+    case 'temperature':
+      return getTemperature(depth, date, signal)
+    case 'current':
+      return getCurrent(depth, date, signal)
+  }
 }
 
 export function getInstruments(

@@ -6,8 +6,16 @@ import {
   CURRENT_MIN_SPEED,
 } from '../../utils/currentColor'
 
-export function CurrentScaleControl() {
-  const ticks = getCurrentLegendTicks(CURRENT_MIN_SPEED, CURRENT_MAX_SPEED)
+interface CurrentScaleControlProps {
+  minSpeed?: number
+  maxSpeed?: number
+}
+
+export function CurrentScaleControl({
+  minSpeed = CURRENT_MIN_SPEED,
+  maxSpeed = CURRENT_MAX_SPEED,
+}: CurrentScaleControlProps) {
+  const ticks = getCurrentLegendTicks(minSpeed, maxSpeed)
 
   return (
     <div className="control-block">
@@ -24,7 +32,7 @@ export function CurrentScaleControl() {
         </div>
       </div>
       <p className="control-hint">
-        Synthetic current vectors (MVP). Speed range {CURRENT_MIN_SPEED}–{CURRENT_MAX_SPEED} m/s.
+        Current speed from API field ({formatCurrentTick(minSpeed)}–{formatCurrentTick(maxSpeed)} m/s).
       </p>
     </div>
   )

@@ -10,15 +10,19 @@ import {
 interface CurrentColorbarProps {
   unit?: string
   visible?: boolean
+  minSpeed?: number
+  maxSpeed?: number
 }
 
 export function CurrentColorbar({
   unit = 'm/s',
   visible = true,
+  minSpeed = CURRENT_MIN_SPEED,
+  maxSpeed = CURRENT_MAX_SPEED,
 }: CurrentColorbarProps) {
   const ticks = useMemo(
-    () => getCurrentLegendTicks(CURRENT_MIN_SPEED, CURRENT_MAX_SPEED),
-    [],
+    () => getCurrentLegendTicks(minSpeed, maxSpeed),
+    [minSpeed, maxSpeed],
   )
 
   if (!visible) return null

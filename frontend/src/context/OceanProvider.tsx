@@ -12,6 +12,7 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import {
   formatObservationTime,
   getComparisonAtDepth,
+  getCurrent,
   getInstrument,
   getInstrumentProfile,
   getInstruments,
@@ -24,7 +25,7 @@ import {
   snapDepth,
   toDateParam,
 } from '../services/oceanApi'
-import type { ApiTemperatureField } from '../types/api'
+import type { ApiCurrentField, ApiTemperatureField } from '../types/api'
 import type { OceanContextValue } from '../types/oceanState'
 import type {
   ComparisonStats,
@@ -33,6 +34,7 @@ import type {
   OceanVariable,
 } from '../types/ocean'
 import { getTemperatureRange } from '../utils/temperatureField'
+import { getCurrentMagnitudeRange } from '../utils/currentField'
 
 const DEFAULT_DATE = MODEL_CONFIG.dates[MODEL_CONFIG.dates.length - 1]
 const DEPTH_DEBOUNCE_MS = 300
@@ -54,6 +56,7 @@ export function OceanProvider({ children }: OceanProviderProps) {
   )
 
   const [oceanData, setOceanData] = useState<ApiTemperatureField | null>(null)
+  const [currentData, setCurrentData] = useState<ApiCurrentField | null>(null)
   const [instruments, setInstruments] = useState<Instrument[]>([])
   const [selectedInstrument, setSelectedInstrument] = useState<Instrument | null>(
     null,
@@ -79,6 +82,10 @@ export function OceanProvider({ children }: OceanProviderProps) {
 
   const debouncedDepth = useDebouncedValue(selectedDepth, DEPTH_DEBOUNCE_MS)
   const apiDepth = useMemo(() => snapDepth(debouncedDepth), [debouncedDepth])
+  const apiCurrentDepth = useMemo(
+    () => Math.max(0, Math.min(1000, Math.round(debouncedDepth))),
+    [debouncedDepth],
+  )
 
   const dateIndex = useMemo(() => {
     const idx = availableDates.indexOf(selectedDate)
@@ -88,6 +95,11 @@ export function OceanProvider({ children }: OceanProviderProps) {
   const temperatureRange = useMemo(
     () => (oceanData ? getTemperatureRange(oceanData) : null),
     [oceanData],
+  )
+
+  const currentMagnitudeRange = useMemo(
+    () => (currentData ? getCurrentMagnitudeRange(currentData) : null),
+    [currentData],
   )
 
   useEffect(() => {
@@ -142,8 +154,10 @@ export function OceanProvider({ children }: OceanProviderProps) {
     return () => controller.abort()
   }, [refreshToken])
 
-  // Temperature field — debounced depth + selected date
+  // Temperature field — only when temperature variable is selected
   useEffect(() => {
+    if (selectedVariable !== 'temperature') return
+
     const controller = new AbortController()
     setIsModelLoading(true)
     setModelError(null)
@@ -166,7 +180,35 @@ export function OceanProvider({ children }: OceanProviderProps) {
       })
 
     return () => controller.abort()
-  }, [apiDepth, selectedDate, refreshToken])
+  }, [selectedVariable, apiDepth, selectedDate, refreshToken])
+
+  // Current field — only when current variable is selected
+  useEffect(() => {
+    if (selectedVariable !== 'current') return
+
+    const controller = new AbortController()
+    setIsModelLoading(true)
+    setModelError(null)
+
+    getCurrent(apiCurrentDepth, selectedDate, controller.signal)
+      .then((field) => {
+        if (controller.signal.aborted) return
+        setCurrentData(field)
+        setApiError(null)
+      })
+      .catch((error: unknown) => {
+        if (isAbortError(error) || controller.signal.aborted) return
+        console.error('[Ocean3D] Failed to load current field:', error)
+        const message = 'Unable to load ocean data.'
+        setModelError(message)
+        setApiError(message)
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsModelLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [selectedVariable, apiCurrentDepth, selectedDate, refreshToken])
 
   // Instruments — refetch when date changes
   useEffect(() => {
@@ -284,6 +326,7 @@ export function OceanProvider({ children }: OceanProviderProps) {
       selectInstrument,
       clearInstrumentSelection,
       oceanData,
+      currentData,
       instruments,
       instrumentProfile,
       comparison,
@@ -300,6 +343,8 @@ export function OceanProvider({ children }: OceanProviderProps) {
       colorScaleMin,
       colorScaleMax,
       setColorScale,
+      currentScaleMin: currentMagnitudeRange?.min ?? 0,
+      currentScaleMax: currentMagnitudeRange?.max ?? 1.5,
     }),
     [
       availableDates,
@@ -313,6 +358,7 @@ export function OceanProvider({ children }: OceanProviderProps) {
       selectInstrument,
       clearInstrumentSelection,
       oceanData,
+      currentData,
       instruments,
       instrumentProfile,
       comparison,
@@ -329,6 +375,7 @@ export function OceanProvider({ children }: OceanProviderProps) {
       colorScaleMin,
       colorScaleMax,
       setColorScale,
+      currentMagnitudeRange,
     ],
   )
 

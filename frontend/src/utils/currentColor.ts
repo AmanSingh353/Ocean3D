@@ -1,8 +1,6 @@
-/** MVP synthetic current speed range (frontend ArrowHelper field). */
+/** MVP default range when no API field is loaded yet. */
 export const CURRENT_MIN_SPEED = 0
 export const CURRENT_MAX_SPEED = 1.5
-
-export const CURRENT_LEGEND_TICKS = [0, 0.5, 1.0, 1.5] as const
 
 /** Cyan/teal gradient matching existing current vector arrows. */
 export function getCurrentGradientCss(
@@ -19,8 +17,14 @@ export function formatCurrentTick(value: number): string {
 }
 
 export function getCurrentLegendTicks(
-  min = CURRENT_MIN_SPEED,
-  max = CURRENT_MAX_SPEED,
+  minSpeed = CURRENT_MIN_SPEED,
+  maxSpeed = CURRENT_MAX_SPEED,
+  count = 5,
 ): number[] {
-  return CURRENT_LEGEND_TICKS.filter((t) => t >= min && t <= max).slice().reverse()
+  if (count < 2) return [maxSpeed, minSpeed]
+  const ticks: number[] = []
+  for (let i = 0; i < count; i++) {
+    ticks.push(minSpeed + ((maxSpeed - minSpeed) * i) / (count - 1))
+  }
+  return ticks.reverse()
 }

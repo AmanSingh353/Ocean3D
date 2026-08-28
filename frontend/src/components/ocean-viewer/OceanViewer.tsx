@@ -1,9 +1,13 @@
 import { useEffect, useRef, useCallback, useMemo } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import type { ApiTemperatureField } from '../../types/api'
+import type { ApiCurrentField, ApiTemperatureField } from '../../types/api'
 import type { Instrument, OceanVariable } from '../../types/ocean'
 import { DEPTH_TICKS, VARIABLE_OPTIONS, formatDisplayDate } from '../../data/mockModel'
+import {
+  applyCurrentFieldToGroup,
+  getCurrentMagnitudeRange,
+} from '../../utils/currentField'
 import {
   applyTemperatureFieldToGeometry,
   getTemperatureRange,
@@ -28,6 +32,7 @@ interface OceanViewerProps {
   selectedInstrumentId: string | null
   instruments: Instrument[]
   temperatureField: ApiTemperatureField | null
+  currentField: ApiCurrentField | null
   modelLoading: boolean
   modelError: string | null
   onSelectInstrument: (id: string) => void
@@ -61,6 +66,7 @@ export function OceanViewer({
   selectedInstrumentId,
   instruments,
   temperatureField,
+  currentField,
   modelLoading,
   modelError,
   onSelectInstrument,
@@ -73,6 +79,8 @@ export function OceanViewer({
   const canvasHostRef = useRef<HTMLDivElement>(null)
   const temperatureFieldRef = useRef<ApiTemperatureField | null>(temperatureField)
   temperatureFieldRef.current = temperatureField
+  const currentFieldRef = useRef<ApiCurrentField | null>(currentField)
+  currentFieldRef.current = currentField
 
   const sceneRef = useRef<{
     camera: THREE.PerspectiveCamera
@@ -92,6 +100,11 @@ export function OceanViewer({
   const temperatureRange = useMemo(
     () => (temperatureField ? getTemperatureRange(temperatureField) : null),
     [temperatureField],
+  )
+
+  const currentMagnitudeRange = useMemo(
+    () => (currentField ? getCurrentMagnitudeRange(currentField) : null),
+    [currentField],
   )
 
   const updateOceanAppearance = useCallback(() => {
@@ -144,6 +157,13 @@ export function OceanViewer({
       temperatureRange,
     )
   }, [temperatureField, temperatureRange])
+
+  // Update current vector arrows when API current field changes
+  useEffect(() => {
+    const refs = sceneRef.current
+    if (!refs || !currentField) return
+    applyCurrentFieldToGroup(refs.currents, currentField)
+  }, [currentField])
 
   useEffect(() => {
     const host = canvasHostRef.current
@@ -229,14 +249,6 @@ export function OceanViewer({
     scene.add(depthSlice)
 
     const currents = new THREE.Group()
-    for (let x = -12; x <= 12; x += 4) {
-      for (let z = -8; z <= 8; z += 4) {
-        const dir = new THREE.Vector3(
-          Math.sin(x * 0.3 + z * 0.2), 0, Math.cos(x * 0.2 - z * 0.3),
-        ).normalize()
-        currents.add(new THREE.ArrowHelper(dir, new THREE.Vector3(x, 0.3, z), 2.2, 0x19bcd6, 0.5, 0.35))
-      }
-    }
     scene.add(currents)
 
     sceneRef.current = { camera, renderer, controls, oceanMesh, depthSlice, currents }
@@ -245,6 +257,11 @@ export function OceanViewer({
     if (pendingField) {
       const pendingRange = getTemperatureRange(pendingField)
       applyTemperatureFieldToGeometry(oceanMesh.geometry, pendingField, pendingRange)
+    }
+
+    const pendingCurrent = currentFieldRef.current
+    if (pendingCurrent) {
+      applyCurrentFieldToGroup(currents, pendingCurrent)
     }
 
     const animate = () => {
@@ -303,7 +320,7 @@ export function OceanViewer({
   return (
     <div className="ocean-viewer">
       <div className="ocean-viewer__canvas-host" ref={canvasHostRef} />
-      {(modelLoading || modelError) && isTemperatureMode && (
+      {(modelLoading || modelError) && (
         <div className="ocean-viewer__overlay ocean-viewer__overlay--status">
           <div className="view-label view-label--status">
             {modelLoading ? 'LOADING DATA...' : modelError}
@@ -335,7 +352,11 @@ export function OceanViewer({
       )}
       {isCurrentMode && (
         <div className="ocean-viewer__overlay ocean-viewer__overlay--colorbar">
-          <CurrentColorbar unit="m/s" />
+          <CurrentColorbar
+            unit="m/s"
+            minSpeed={currentMagnitudeRange?.min}
+            maxSpeed={currentMagnitudeRange?.max}
+          />
         </div>
       )}
       <div className="ocean-viewer__overlay ocean-viewer__overlay--toolbar">

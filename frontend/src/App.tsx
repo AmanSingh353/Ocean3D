@@ -119,6 +119,8 @@ function Dashboard() {
             colorScaleMin={ocean.colorScaleMin}
             colorScaleMax={ocean.colorScaleMax}
             onColorScaleApply={ocean.setColorScale}
+            currentScaleMin={ocean.currentScaleMin}
+            currentScaleMax={ocean.currentScaleMax}
           />
         }
         viewer={
@@ -135,6 +137,7 @@ function Dashboard() {
             selectedInstrumentId={ocean.selectedInstrumentId}
             instruments={markerInstruments}
             temperatureField={ocean.oceanData}
+            currentField={ocean.currentData}
             modelLoading={ocean.isModelLoading}
             modelError={ocean.modelError}
             onSelectInstrument={handleSelectInstrument}

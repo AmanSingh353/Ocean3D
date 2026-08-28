@@ -46,5 +46,23 @@ class ModelMetadataResponse(BaseModel):
     region: RegionInfo
 
 
+class CurrentFieldResponse(BaseModel):
+    variable: Literal["current"] = "current"
+    unit: Literal["m/s"] = "m/s"
+    date: str = Field(description="ISO-8601 timestamp for the model field")
+    depth: int = Field(description="Depth level in meters")
+    bounds: Bounds
+    grid: Grid
+    u: list[list[float]] = Field(
+        description="East-west velocity component [lat_index][lon_index] in m/s"
+    )
+    v: list[list[float]] = Field(
+        description="North-south velocity component [lat_index][lon_index] in m/s"
+    )
+    magnitude: list[list[float]] = Field(
+        description="Current speed magnitude [lat_index][lon_index] in m/s"
+    )
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
