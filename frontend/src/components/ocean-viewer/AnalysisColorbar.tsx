@@ -32,11 +32,13 @@ function getTitle(mode: AnalysisMode, variable: OceanVariable): string {
       return 'Difference'
     case 'absoluteError':
       return 'Absolute Error'
+    case 'regionalValidation':
+      return 'Regional Validation'
   }
 }
 
 function getGradient(mode: AnalysisMode, variable: OceanVariable): string {
-  if (mode === 'difference') return getDifferenceGradientCss('vertical')
+  if (mode === 'difference' || mode === 'regionalValidation') return getDifferenceGradientCss('vertical')
   if (mode === 'absoluteError') return getAbsoluteErrorGradientCss('vertical')
   switch (variable) {
     case 'temperature':
@@ -51,7 +53,7 @@ function getGradient(mode: AnalysisMode, variable: OceanVariable): string {
 }
 
 function getExtremeLabels(mode: AnalysisMode): { low: string; high: string } {
-  if (mode === 'difference') return { low: 'Negative', high: 'Positive' }
+  if (mode === 'difference' || mode === 'regionalValidation') return { low: 'Negative', high: 'Positive' }
   if (mode === 'absoluteError') return { low: '0', high: 'High' }
   return { low: 'Low', high: 'High' }
 }
@@ -59,11 +61,16 @@ function getExtremeLabels(mode: AnalysisMode): { low: string; high: string } {
 export function AnalysisColorbar({ mode, variable, min, max }: AnalysisColorbarProps) {
   const unit = getVariableMeta(variable).unit
   const title = getTitle(mode, variable)
-  const displayTitle = mode === 'absoluteError' ? 'ABSOLUTE ERROR' : title
+  const displayTitle =
+    mode === 'absoluteError'
+      ? 'ABSOLUTE ERROR'
+      : mode === 'regionalValidation'
+        ? 'REGIONAL VALIDATION'
+        : title
 
   const ticks = useMemo(() => {
     if (min == null || max == null) return []
-    if (mode === 'difference') return getDifferenceLegendTicks(min, max)
+    if (mode === 'difference' || mode === 'regionalValidation') return getDifferenceLegendTicks(min, max)
     if (mode === 'absoluteError') return getAbsoluteErrorLegendTicks(min, max)
     return getLegendTicks(min, max).reverse()
   }, [min, max, mode])

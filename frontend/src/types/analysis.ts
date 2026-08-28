@@ -1,6 +1,11 @@
 import type { DepthMatchKind, Instrument, OceanVariable } from './ocean'
 
-export type AnalysisMode = 'model' | 'observation' | 'difference' | 'absoluteError'
+export type AnalysisMode =
+  | 'model'
+  | 'observation'
+  | 'difference'
+  | 'absoluteError'
+  | 'regionalValidation'
 
 export interface SpatialValidationPoint {
   instrumentId: string
@@ -23,6 +28,7 @@ export interface RegionValidationStats {
   mae: number | null
   rmse: number | null
   maxAbsoluteError: number | null
+  medianAbsoluteError: number | null
 }
 
 export interface SpatialAnalysisSnapshot {

@@ -42,6 +42,9 @@ export interface OceanDataState {
   isModelLoading: boolean
   isInstrumentsLoading: boolean
   isProfileLoading: boolean
+  /** True while fetching data for the currently selected timestep */
+  isTimestepLoading: boolean
+  timestepError: string | null
   modelError: string | null
   profileError: string | null
   instrumentsError: string | null

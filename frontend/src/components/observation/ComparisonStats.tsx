@@ -61,7 +61,7 @@ export function ComparisonStatsPanel({
   const absError = pointAbsoluteError(stats)
   const diffSign = difference != null && difference >= 0 ? '+' : ''
 
-  const showDifferenceHighlight = analysisMode === 'difference'
+  const showDifferenceHighlight = analysisMode === 'difference' || analysisMode === 'regionalValidation'
   const showAbsErrorHighlight = analysisMode === 'absoluteError'
 
   return (

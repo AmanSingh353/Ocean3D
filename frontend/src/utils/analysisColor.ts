@@ -101,6 +101,12 @@ export function getAbsoluteErrorLegendTicks(min: number, max: number, count = 5)
   return ticks.reverse()
 }
 
+/** CSS color string for marker accent from signed difference. */
+export function differenceToCss(value: number, min: number, max: number): string {
+  const color = differenceToColor(value, min, max)
+  return `#${color.getHexString()}`
+}
+
 /** Map normalized error magnitude (0–1) to marker accent intensity. */
 export function errorMagnitudeToCss(error: number, maxError: number): string {
   if (!Number.isFinite(error) || !Number.isFinite(maxError) || maxError <= 0) {

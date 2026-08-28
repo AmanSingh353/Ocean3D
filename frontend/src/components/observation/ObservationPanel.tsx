@@ -1,4 +1,4 @@
-import type { AnalysisMode, RegionValidationStats } from '../../types/analysis'
+import type { AnalysisMode, RegionValidationStats, SpatialAnalysisSnapshot } from '../../types/analysis'
 import type { Instrument, InstrumentProfile, ValidationStats, OceanVariable } from '../../types/ocean'
 import { InstrumentDetails } from './InstrumentDetails'
 import { RegionValidationPanel } from './RegionValidationPanel'
@@ -20,6 +20,7 @@ interface ObservationPanelProps {
   spatialProfilesLoading: boolean
   spatialProfilesError: string | null
   selectedDepth: number
+  spatialAnalysis: SpatialAnalysisSnapshot | null
 }
 
 export function ObservationPanel({
@@ -39,15 +40,25 @@ export function ObservationPanel({
   spatialProfilesLoading,
   spatialProfilesError,
   selectedDepth,
+  spatialAnalysis,
 }: ObservationPanelProps) {
+  const isRegionalValidation = analysisMode === 'regionalValidation'
   const showAnalysisSummary = analysisMode !== 'model'
   const showEmpty =
-    !selectedInstrumentId && !profileLoading && !profileError && !showAnalysisSummary
+    !selectedInstrumentId &&
+    !profileLoading &&
+    !profileError &&
+    !showAnalysisSummary
   const showDetails =
     !profileLoading &&
     !profileError &&
     selectedInstrument !== null &&
     profile !== null
+
+  const selectedSpatialPoint =
+    selectedInstrumentId && spatialAnalysis
+      ? spatialAnalysis.points.find((p) => p.instrumentId === selectedInstrumentId) ?? null
+      : null
 
   return (
     <div className="observation-panel">
@@ -59,6 +70,10 @@ export function ObservationPanel({
           error={spatialProfilesError}
           analysisMode={analysisMode}
           selectedDepth={selectedDepth}
+          selectedDate={selectedDate}
+          selectedVariable={selectedVariable}
+          selectedPoint={selectedSpatialPoint}
+          selectedPlatformLabel={selectedInstrument?.id ?? selectedInstrumentId}
         />
       ) : null}
       {profileLoading && (
@@ -83,9 +98,15 @@ export function ObservationPanel({
       )}
       {showEmpty ? (
         <div className="observation-empty">
-          <p className="observation-empty__title">Select an Argo Float or Glider</p>
+          <p className="observation-empty__title">
+            {isRegionalValidation
+              ? 'Regional validation active'
+              : 'Select an Argo Float or Glider'}
+          </p>
           <p className="observation-empty__hint">
-            Click a platform in the ocean view to inspect its profile.
+            {isRegionalValidation
+              ? 'Click a platform marker to inspect its individual validation result.'
+              : 'Click a platform in the ocean view to inspect its profile.'}
           </p>
         </div>
       ) : null}

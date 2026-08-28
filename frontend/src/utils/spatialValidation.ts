@@ -66,17 +66,23 @@ export function computeRegionValidationStats(
       mae: null,
       rmse: null,
       maxAbsoluteError: null,
+      medianAbsoluteError: null,
     }
   }
 
   const biases = valid.map((p) => p.observation! - p.model!)
   const absErrors = valid.map((p) => p.absoluteError!)
   const squared = biases.map((b) => b * b)
+  const sortedAbs = [...absErrors].sort((a, b) => a - b)
 
   const meanBias = biases.reduce((a, b) => a + b, 0) / biases.length
   const mae = absErrors.reduce((a, b) => a + b, 0) / absErrors.length
   const rmse = Math.sqrt(squared.reduce((a, b) => a + b, 0) / squared.length)
   const maxAbsoluteError = Math.max(...absErrors)
+  const medianAbsoluteError =
+    sortedAbs.length % 2 === 0
+      ? (sortedAbs[sortedAbs.length / 2 - 1] + sortedAbs[sortedAbs.length / 2]) / 2
+      : sortedAbs[Math.floor(sortedAbs.length / 2)]
 
   return {
     variable,
@@ -86,6 +92,7 @@ export function computeRegionValidationStats(
     mae,
     rmse,
     maxAbsoluteError,
+    medianAbsoluteError,
   }
 }
 
@@ -103,10 +110,22 @@ function getAnalysisValue(point: SpatialValidationPoint, mode: AnalysisMode): nu
     case 'observation':
       return point.observation
     case 'difference':
+    case 'regionalValidation':
       return point.difference
     case 'absoluteError':
       return point.absoluteError
   }
+}
+
+/** Whether this mode requires platform profile data to be loaded. */
+export function requiresSpatialProfiles(mode: AnalysisMode): boolean {
+  return mode !== 'model'
+}
+
+/** Mesh overlay uses platform-influence coloring (not plain model field). */
+export function usesSpatialMeshOverlay(mode: AnalysisMode, validationLayerEnabled: boolean): boolean {
+  if (mode === 'regionalValidation') return validationLayerEnabled
+  return mode !== 'model'
 }
 
 export function computeSpatialAnalysisSnapshot(
@@ -144,7 +163,7 @@ export function computeSpatialAnalysisSnapshot(
   let legendMax: number | null = null
 
   if (validValues.length > 0) {
-    if (mode === 'difference') {
+    if (mode === 'difference' || mode === 'regionalValidation') {
       const maxAbs = Math.max(...validValues.map(Math.abs))
       legendMin = -maxAbs
       legendMax = maxAbs

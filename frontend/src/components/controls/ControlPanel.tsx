@@ -38,6 +38,8 @@ interface ControlPanelProps {
   chlorophyllScaleMax?: number
   analysisMode: AnalysisMode
   onAnalysisModeChange: (mode: AnalysisMode) => void
+  validationLayerEnabled?: boolean
+  onValidationLayerChange?: (enabled: boolean) => void
   apiModelDepth: number
   availableDepths: number[]
   depthTicks: number[]
@@ -71,6 +73,9 @@ export function ControlPanel(props: ControlPanelProps) {
         onShowGlidersChange={props.onShowGlidersChange}
         showCurrents={props.showCurrents}
         onShowCurrentsChange={props.onShowCurrentsChange}
+        validationLayerEnabled={props.validationLayerEnabled}
+        onValidationLayerChange={props.onValidationLayerChange}
+        showValidationLayerControl={props.analysisMode === 'regionalValidation'}
       />
       <div className="control-divider" />
       <VisualizationControls

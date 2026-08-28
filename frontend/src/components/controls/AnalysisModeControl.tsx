@@ -1,6 +1,6 @@
 import type { AnalysisMode } from '../../types/analysis'
 
-const ANALYSIS_OPTIONS: { value: AnalysisMode; label: string; hint: string }[] = [
+const ANALYSIS_OPTIONS: { value: AnalysisMode; label: string; hint: string; wide?: boolean }[] = [
   { value: 'model', label: 'Model', hint: 'Ocean model field' },
   {
     value: 'observation',
@@ -16,6 +16,12 @@ const ANALYSIS_OPTIONS: { value: AnalysisMode; label: string; hint: string }[] =
     value: 'absoluteError',
     label: 'Absolute Error',
     hint: '|Model − observation| where matched',
+  },
+  {
+    value: 'regionalValidation',
+    label: 'Regional Validation',
+    hint: 'Regional model vs observation validation',
+    wide: true,
   },
 ]
 
@@ -33,7 +39,7 @@ export function AnalysisModeControl({ value, onChange }: AnalysisModeControlProp
           <button
             key={option.value}
             type="button"
-            className={`analysis-mode-btn ${value === option.value ? 'analysis-mode-btn--active' : ''}`}
+            className={`analysis-mode-btn ${option.wide ? 'analysis-mode-btn--wide' : ''} ${value === option.value ? 'analysis-mode-btn--active' : ''}`}
             onClick={() => onChange(option.value)}
             title={option.hint}
             aria-pressed={value === option.value}

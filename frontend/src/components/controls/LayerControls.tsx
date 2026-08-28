@@ -12,6 +12,9 @@ interface LayerControlsProps {
   onShowGlidersChange: (show: boolean) => void
   showCurrents: boolean
   onShowCurrentsChange: (show: boolean) => void
+  validationLayerEnabled?: boolean
+  onValidationLayerChange?: (enabled: boolean) => void
+  showValidationLayerControl?: boolean
 }
 
 export function LayerControls(props: LayerControlsProps) {
@@ -69,6 +72,24 @@ export function LayerControls(props: LayerControlsProps) {
           </div>
         </div>
       </div>
+      {props.showValidationLayerControl ? (
+        <div className="control-block">
+          <label className="control-label">VALIDATION LAYER</label>
+          <div className="control-row">
+            <span className="control-row__label">Spatial Error</span>
+            <div className="control-row__action">
+              <Toggle
+                checked={props.validationLayerEnabled ?? false}
+                onChange={props.onValidationLayerChange ?? (() => {})}
+                label="Validation spatial error layer"
+              />
+              <span className={`state-label ${props.validationLayerEnabled ? 'state-label--on' : ''}`}>
+                {props.validationLayerEnabled ? 'ON' : 'OFF'}
+              </span>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   )
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Header } from './components/layout/Header'
 import { MainLayout } from './components/layout/MainLayout'
 import { ControlPanel } from './components/controls/ControlPanel'
@@ -8,9 +8,10 @@ import { ObservationPanel } from './components/observation/ObservationPanel'
 import { Timeline } from './components/timeline/Timeline'
 import { OceanProvider } from './context/OceanProvider'
 import { useOcean } from './hooks/useOcean'
+import { useTimelinePlayback } from './hooks/useTimelinePlayback'
 
 function DataStatusBanner() {
-  const { isLoading, error, retryOceanData } = useOcean()
+  const { isMetadataLoading, error, retryOceanData } = useOcean()
 
   if (error) {
     return (
@@ -23,10 +24,10 @@ function DataStatusBanner() {
     )
   }
 
-  if (isLoading) {
+  if (isMetadataLoading) {
     return (
       <div className="api-status-banner api-status-banner--loading">
-        LOADING DATA...
+        Loading ocean model metadata...
       </div>
     )
   }
@@ -43,24 +44,31 @@ function Dashboard() {
   const [showGliders, setShowGliders] = useState(true)
   const [showCurrents, setShowCurrents] = useState(true)
   const [verticalExaggeration, setVerticalExaggeration] = useState(1.5)
-  const [isPlaying, setIsPlaying] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('rotate')
   const [resetToken, setResetToken] = useState(0)
   const [controlsOpen, setControlsOpen] = useState(false)
   const [observationOpen, setObservationOpen] = useState(false)
+  const [validationLayerEnabled, setValidationLayerEnabled] = useState(false)
 
-  useEffect(() => {
-    if (!isPlaying) return
-    const interval = window.setInterval(() => {
-      const nextIndex = ocean.dateIndex + 1
-      if (nextIndex >= ocean.availableDates.length) {
-        setIsPlaying(false)
-        return
-      }
-      ocean.setDateIndex(nextIndex)
-    }, 1500)
-    return () => window.clearInterval(interval)
-  }, [isPlaying, ocean.dateIndex, ocean.availableDates.length, ocean.setDateIndex])
+  const handleAdvanceTimestep = useCallback(() => {
+    ocean.setDateIndex(Math.min(ocean.availableDates.length - 1, ocean.dateIndex + 1))
+  }, [ocean])
+
+  const playback = useTimelinePlayback({
+    dateIndex: ocean.dateIndex,
+    dateCount: ocean.availableDates.length,
+    isTimestepLoading: ocean.isTimestepLoading,
+    hasTimestepError: Boolean(ocean.timestepError),
+    onAdvance: handleAdvanceTimestep,
+  })
+
+  const handleDateIndexChange = useCallback(
+    (index: number) => {
+      playback.pause()
+      ocean.setDateIndex(index)
+    },
+    [ocean, playback],
+  )
 
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -107,7 +115,7 @@ function Dashboard() {
           <Header
             currentDate={ocean.selectedDate}
             regionLabel={ocean.regionLabel}
-            isLoading={ocean.isLoading}
+            isLoading={ocean.isMetadataLoading || ocean.isTimestepLoading}
             hasError={Boolean(ocean.error)}
             onFullscreen={toggleFullscreen}
           />
@@ -144,6 +152,8 @@ function Dashboard() {
             chlorophyllScaleMax={ocean.chlorophyllScaleMax}
             analysisMode={ocean.analysisMode}
             onAnalysisModeChange={ocean.setAnalysisMode}
+            validationLayerEnabled={validationLayerEnabled}
+            onValidationLayerChange={setValidationLayerEnabled}
           />
         }
         viewer={
@@ -168,6 +178,7 @@ function Dashboard() {
             chlorophyllField={ocean.chlorophyllData}
             modelLoading={ocean.isModelLoading}
             modelError={ocean.modelError}
+            timestepError={ocean.timestepError}
             onSelectInstrument={handleSelectInstrument}
             viewMode={viewMode}
             onViewModeChange={setViewMode}
@@ -177,6 +188,7 @@ function Dashboard() {
             analysisMode={ocean.analysisMode}
             spatialAnalysis={ocean.spatialAnalysis}
             spatialProfilesLoading={ocean.isSpatialProfilesLoading}
+            validationLayerEnabled={validationLayerEnabled}
           />
         }
         observation={
@@ -197,6 +209,7 @@ function Dashboard() {
             spatialProfilesLoading={ocean.isSpatialProfilesLoading}
             spatialProfilesError={ocean.spatialProfilesError}
             selectedDepth={ocean.selectedDepth}
+            spatialAnalysis={ocean.spatialAnalysis}
           />
         }
         timeline={
@@ -204,15 +217,21 @@ function Dashboard() {
             dates={ocean.availableDates}
             currentDate={ocean.selectedDate}
             dateIndex={ocean.dateIndex}
-            isPlaying={isPlaying}
-            onDateIndexChange={ocean.setDateIndex}
-            onTogglePlay={() => setIsPlaying((p) => !p)}
-            onPrevious={() => ocean.setDateIndex(Math.max(0, ocean.dateIndex - 1))}
-            onNext={() =>
+            isPlaying={playback.isPlaying}
+            isLoading={ocean.isTimestepLoading}
+            timestepError={ocean.timestepError}
+            onDateIndexChange={handleDateIndexChange}
+            onTogglePlay={playback.togglePlay}
+            onPrevious={() => {
+              playback.pause()
+              ocean.setDateIndex(Math.max(0, ocean.dateIndex - 1))
+            }}
+            onNext={() => {
+              playback.pause()
               ocean.setDateIndex(
                 Math.min(ocean.availableDates.length - 1, ocean.dateIndex + 1),
               )
-            }
+            }}
           />
         }
       />

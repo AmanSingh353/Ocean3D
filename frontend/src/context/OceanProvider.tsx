@@ -44,10 +44,15 @@ import { getTemperatureRange } from '../utils/temperatureField'
 import { getCurrentMagnitudeRange } from '../utils/currentField'
 import { getSalinityRange } from '../utils/salinityField'
 import { getChlorophyllRange } from '../utils/chlorophyllField'
-import { computeSpatialAnalysisSnapshot } from '../utils/spatialValidation'
+import { InstrumentsCache } from '../utils/instrumentsCache'
+import {
+  computeSpatialAnalysisSnapshot,
+  requiresSpatialProfiles,
+} from '../utils/spatialValidation'
 
 const DEFAULT_DATE = DEFAULT_DATES[DEFAULT_DATES.length - 1]
 const DEPTH_DEBOUNCE_MS = 300
+const TIMESTEP_ERROR = 'No data available for this timestep.'
 
 export const OceanContext = createContext<OceanContextValue | null>(null)
 
@@ -101,6 +106,7 @@ export function OceanProvider({ children }: OceanProviderProps) {
     Map<string, { instrument: Instrument; profile: InstrumentProfile; observationTime: string }>
   >(new Map())
   const fieldCacheRef = useRef(new OceanFieldCache())
+  const instrumentsCacheRef = useRef(new InstrumentsCache())
 
   const profileCacheKey = useCallback(
     (instrumentId: string, date: string) => `${instrumentId}:${toDateParam(date)}`,
@@ -220,6 +226,7 @@ export function OceanProvider({ children }: OceanProviderProps) {
     setSpatialProfilesError(null)
     setMetadataError(null)
     fieldCacheRef.current.clear()
+    instrumentsCacheRef.current.clear()
     setRefreshToken((t) => t + 1)
   }, [])
 
@@ -271,7 +278,6 @@ export function OceanProvider({ children }: OceanProviderProps) {
 
     setIsModelLoading(true)
     setModelError(null)
-    clearField(selectedVariable)
 
     getOceanFieldAtDepth(selectedVariable, resolvedApiDepth, selectedDate, controller.signal)
       .then((field) => {
@@ -285,10 +291,7 @@ export function OceanProvider({ children }: OceanProviderProps) {
       .catch((error: unknown) => {
         if (isAbortError(error) || controller.signal.aborted) return
         console.error('[Ocean3D] Failed to load ocean field:', error)
-        clearField(selectedVariable)
-        const message = 'Unable to load ocean model data.'
-        setModelError(message)
-        setApiError(message)
+        setModelError(TIMESTEP_ERROR)
       })
       .finally(() => {
         if (!controller.signal.aborted) setIsModelLoading(false)
@@ -304,9 +307,20 @@ export function OceanProvider({ children }: OceanProviderProps) {
     clearField,
   ])
 
-  // Instruments — refetch when date changes
+  // Instruments — refetch when date changes (cached per date)
   useEffect(() => {
     const controller = new AbortController()
+    const dateKey = toDateParam(selectedDate)
+    const cached = instrumentsCacheRef.current.get(dateKey)
+
+    if (cached) {
+      const depth = selectedDepthRef.current
+      setInstruments(cached.map((inst) => ({ ...inst, currentDepth: depth })))
+      setIsInstrumentsLoading(false)
+      setInstrumentsError(null)
+      return () => controller.abort()
+    }
+
     setIsInstrumentsLoading(true)
     setInstrumentsError(null)
 
@@ -314,17 +328,16 @@ export function OceanProvider({ children }: OceanProviderProps) {
       .then((apiInstruments) => {
         if (controller.signal.aborted) return
         const depth = selectedDepthRef.current
-        setInstruments(apiInstruments.map((item) => mapInstrumentSummary(item, depth)))
+        const mapped = apiInstruments.map((item) => mapInstrumentSummary(item, depth))
+        instrumentsCacheRef.current.set(dateKey, mapped)
+        setInstruments(mapped)
         setInstrumentsError(null)
         setApiError(null)
       })
       .catch((error: unknown) => {
         if (isAbortError(error) || controller.signal.aborted) return
         console.error('[Ocean3D] Failed to load instruments:', error)
-        setInstruments([])
-        const message = 'Unable to load observation platforms.'
-        setInstrumentsError(message)
-        setApiError(message)
+        setInstrumentsError(TIMESTEP_ERROR)
       })
       .finally(() => {
         if (!controller.signal.aborted) setIsInstrumentsLoading(false)
@@ -425,7 +438,7 @@ export function OceanProvider({ children }: OceanProviderProps) {
   }, [instruments, selectedDate, profileCacheKey, spatialProfilesVersion, instrumentProfile, analysisMode])
 
   useEffect(() => {
-    if (analysisMode === 'model' || instruments.length === 0) {
+    if (!requiresSpatialProfiles(analysisMode) || instruments.length === 0) {
       setSpatialProfilesLoading(false)
       setSpatialProfilesError(null)
       return
@@ -477,7 +490,7 @@ export function OceanProvider({ children }: OceanProviderProps) {
   }, [analysisMode, instruments, selectedDate, refreshToken, profileCacheKey])
 
   const spatialAnalysis = useMemo<SpatialAnalysisSnapshot | null>(() => {
-    if (analysisMode === 'model') return null
+    if (!requiresSpatialProfiles(analysisMode)) return null
     return computeSpatialAnalysisSnapshot(
       instruments,
       profilesById,
@@ -487,9 +500,16 @@ export function OceanProvider({ children }: OceanProviderProps) {
     )
   }, [analysisMode, instruments, profilesById, selectedDepth, selectedVariable])
 
-  const isLoading =
-    isMetadataLoading || isModelLoading || isInstrumentsLoading || isProfileLoading
-  const error = apiError ?? modelError ?? profileError ?? instrumentsError ?? metadataError
+  const isTimestepLoading =
+    isModelLoading ||
+    isInstrumentsLoading ||
+    (selectedInstrumentId != null && isProfileLoading) ||
+    (requiresSpatialProfiles(analysisMode) && spatialProfilesLoading)
+
+  const timestepError = modelError ?? instrumentsError ?? profileError ?? spatialProfilesError
+
+  const isLoading = isMetadataLoading || isTimestepLoading
+  const error = apiError ?? metadataError ?? (isTimestepLoading ? null : timestepError)
 
   const value = useMemo<OceanContextValue>(
     () => ({
@@ -529,6 +549,8 @@ export function OceanProvider({ children }: OceanProviderProps) {
       isModelLoading,
       isInstrumentsLoading,
       isProfileLoading,
+      isTimestepLoading,
+      timestepError,
       isLoading,
       modelError,
       profileError,
@@ -578,6 +600,8 @@ export function OceanProvider({ children }: OceanProviderProps) {
       isModelLoading,
       isInstrumentsLoading,
       isProfileLoading,
+      isTimestepLoading,
+      timestepError,
       isLoading,
       modelError,
       profileError,
