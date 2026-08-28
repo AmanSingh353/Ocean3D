@@ -1,42 +1,20 @@
 import * as THREE from 'three'
 import type { ApiBounds } from '../types/api'
-import type { CoastlinePolyline } from '../data/indianOceanCoastlines'
 import {
   INDIAN_OCEAN_VIEW_BOUNDS,
   latLonToSceneXZ,
+  OCEAN_BASE_VERTEX_RGB,
   type GeoBounds,
 } from './geoProjection'
 
-/** Build line segments geometry for coastlines at y = elevation. */
-export function createCoastlineGeometry(
-  polylines: CoastlinePolyline[],
+/**
+ * Model visualization grid spanning the full geographic view domain.
+ * Each vertex is placed at an actual lat/lon — field coloring fills the API model extent.
+ */
+export function createViewSurfaceGeometry(
   viewBounds: GeoBounds = INDIAN_OCEAN_VIEW_BOUNDS,
-  elevation = 0.14,
-): THREE.BufferGeometry {
-  const positions: number[] = []
-
-  for (const line of polylines) {
-    const coords = line.coordinates
-    for (let i = 0; i < coords.length - 1; i++) {
-      const [lon1, lat1] = coords[i]
-      const [lon2, lat2] = coords[i + 1]
-      const p1 = latLonToSceneXZ(lat1, lon1, viewBounds)
-      const p2 = latLonToSceneXZ(lat2, lon2, viewBounds)
-      positions.push(p1.x, elevation, p1.z, p2.x, elevation, p2.z)
-    }
-  }
-
-  const geometry = new THREE.BufferGeometry()
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-  return geometry
-}
-
-/** Geographic model-data surface aligned to API bounds within the view domain. */
-export function createModelSurfaceGeometry(
-  dataBounds: ApiBounds,
-  segmentsX = 14,
-  segmentsZ = 10,
-  viewBounds: GeoBounds = INDIAN_OCEAN_VIEW_BOUNDS,
+  segmentsX = 28,
+  segmentsZ = 22,
 ): THREE.BufferGeometry {
   const vertices: number[] = []
   const indices: number[] = []
@@ -45,14 +23,14 @@ export function createModelSurfaceGeometry(
   for (let j = 0; j <= segmentsZ; j++) {
     for (let i = 0; i <= segmentsX; i++) {
       const lon =
-        dataBounds.lon_min +
-        (i / segmentsX) * (dataBounds.lon_max - dataBounds.lon_min)
+        viewBounds.lon_min +
+        (i / segmentsX) * (viewBounds.lon_max - viewBounds.lon_min)
       const lat =
-        dataBounds.lat_min +
-        (j / segmentsZ) * (dataBounds.lat_max - dataBounds.lat_min)
+        viewBounds.lat_min +
+        (j / segmentsZ) * (viewBounds.lat_max - viewBounds.lat_min)
       const { x, z } = latLonToSceneXZ(lat, lon, viewBounds)
       vertices.push(x, 0, z)
-      colors.push(0.04, 0.09, 0.12)
+      colors.push(OCEAN_BASE_VERTEX_RGB.r, OCEAN_BASE_VERTEX_RGB.g, OCEAN_BASE_VERTEX_RGB.b)
     }
   }
 
@@ -73,6 +51,16 @@ export function createModelSurfaceGeometry(
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
   geometry.computeVertexNormals()
   return geometry
+}
+
+/** @deprecated Use createViewSurfaceGeometry */
+export function createModelSurfaceGeometry(
+  _dataBounds: ApiBounds,
+  segmentsX = 28,
+  segmentsZ = 22,
+  viewBounds: GeoBounds = INDIAN_OCEAN_VIEW_BOUNDS,
+): THREE.BufferGeometry {
+  return createViewSurfaceGeometry(viewBounds, segmentsX, segmentsZ)
 }
 
 /** Full-view dark ocean base plane. */

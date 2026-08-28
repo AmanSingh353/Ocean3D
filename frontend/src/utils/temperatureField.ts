@@ -5,6 +5,7 @@ import {
   type TemperatureRange,
 } from './temperatureColor'
 import { sceneXZToLatLon, INDIAN_OCEAN_VIEW_BOUNDS } from './geoProjection'
+import { isInsideModelBounds, setOceanBaseVertexColor } from './fieldSampling'
 
 /** Map Three.js scene X/Z to geographic coordinates within the view domain. */
 export function sceneToLatLon(
@@ -91,6 +92,10 @@ export function applyTemperatureFieldToGeometry(
     const x = positions.getX(i)
     const z = positions.getZ(i)
     const { lat, lon } = sceneToLatLon(x, z, field.bounds)
+    if (!isInsideModelBounds(lat, lon, field.bounds)) {
+      setOceanBaseVertexColor(colors, i)
+      continue
+    }
     const temp = sampleTemperatureField(field, lat, lon)
     const c = temperatureToColor(temp, range.min, range.max)
     colors.setXYZ(i, c.r, c.g, c.b)

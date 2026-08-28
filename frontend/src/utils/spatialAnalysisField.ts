@@ -15,6 +15,7 @@ import { salinityToColor } from './salinityColor'
 import { getTemperatureRange, sampleTemperatureField, sceneToLatLon } from './temperatureField'
 import { temperatureToColor } from './temperatureColor'
 import { findNearestSpatialPoint, getAnalysisValueFromPoint } from './spatialValidation'
+import { isInsideModelBounds, setOceanBaseVertexColor } from './fieldSampling'
 
 const DIM_FACTOR = 0.28
 
@@ -114,6 +115,11 @@ export function applySpatialAnalysisToGeometry(input: SpatialAnalysisFieldInput)
     const x = positions.getX(i)
     const z = positions.getZ(i)
     const { lat, lon } = sceneToLatLon(x, z, bounds)
+    if (!isInsideModelBounds(lat, lon, bounds)) {
+      setOceanBaseVertexColor(colors, i)
+      continue
+    }
+
     const nearest = findNearestSpatialPoint(lat, lon, points)
 
     let color: THREE.Color
@@ -156,11 +162,11 @@ export function applySpatialAnalysisToGeometry(input: SpatialAnalysisFieldInput)
   colors.needsUpdate = true
 }
 
-/** Reset ocean mesh to neutral dark (used when scalar field is not active). */
+/** Reset ocean mesh to base ocean color (outside model / neutral state). */
 export function applyNeutralOceanGeometry(geometry: THREE.BufferGeometry): void {
   const colors = geometry.attributes.color as THREE.BufferAttribute
   for (let i = 0; i < colors.count; i++) {
-    colors.setXYZ(i, MISSING_VERTEX_COLOR.r, MISSING_VERTEX_COLOR.g, MISSING_VERTEX_COLOR.b)
+    setOceanBaseVertexColor(colors, i)
   }
   colors.needsUpdate = true
 }

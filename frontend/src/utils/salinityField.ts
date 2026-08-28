@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import type { ApiSalinityField } from '../types/api'
 import { salinityToColor, type SalinityRange } from './salinityColor'
 import { sceneToLatLon } from './temperatureField'
+import { isInsideModelBounds, setOceanBaseVertexColor } from './fieldSampling'
 
 /** Compute min/max from the API grid, ignoring null/NaN values. */
 export function getSalinityRange(field: ApiSalinityField): SalinityRange {
@@ -79,6 +80,10 @@ export function applySalinityFieldToGeometry(
     const x = positions.getX(i)
     const z = positions.getZ(i)
     const { lat, lon } = sceneToLatLon(x, z, field.bounds)
+    if (!isInsideModelBounds(lat, lon, field.bounds)) {
+      setOceanBaseVertexColor(colors, i)
+      continue
+    }
     const salinity = sampleSalinityField(field, lat, lon)
     const c = salinityToColor(salinity, range.min, range.max)
     colors.setXYZ(i, c.r, c.g, c.b)

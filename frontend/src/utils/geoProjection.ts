@@ -3,11 +3,14 @@ import type { ApiBounds } from '../types/api'
 
 /** Geographic extent of the 3D map base (Indian Ocean + surrounding coastlines). */
 export const INDIAN_OCEAN_VIEW_BOUNDS: ApiBounds = {
-  lat_min: -18,
-  lat_max: 30,
-  lon_min: 32,
-  lon_max: 108,
+  lat_min: -12,
+  lat_max: 28,
+  lon_min: 42,
+  lon_max: 100,
 }
+
+/** Subtle vertex color for ocean areas outside the API model grid. */
+export const OCEAN_BASE_VERTEX_RGB = { r: 0.035, g: 0.078, b: 0.11 } as const
 
 /** Three.js horizontal scene size (X axis = longitude). */
 export const GEO_SCENE_WIDTH = 54
@@ -19,6 +22,19 @@ export const GEO_SCENE_DEPTH =
     (INDIAN_OCEAN_VIEW_BOUNDS.lon_max - INDIAN_OCEAN_VIEW_BOUNDS.lon_min))
 
 export type GeoBounds = Pick<ApiBounds, 'lat_min' | 'lat_max' | 'lon_min' | 'lon_max'>
+
+export function isInsideGeoBounds(
+  lat: number,
+  lon: number,
+  bounds: GeoBounds,
+): boolean {
+  return (
+    lat >= bounds.lat_min &&
+    lat <= bounds.lat_max &&
+    lon >= bounds.lon_min &&
+    lon <= bounds.lon_max
+  )
+}
 
 /** Map latitude/longitude to Three.js X/Z using equirectangular projection. */
 export function latLonToSceneXZ(

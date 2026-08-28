@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import type { ApiChlorophyllField } from '../types/api'
 import { chlorophyllToColor, type ChlorophyllRange } from './chlorophyllColor'
 import { sceneToLatLon } from './temperatureField'
+import { isInsideModelBounds, setOceanBaseVertexColor } from './fieldSampling'
 
 /** Compute min/max from the API grid, ignoring null/NaN values. */
 export function getChlorophyllRange(field: ApiChlorophyllField): ChlorophyllRange {
@@ -79,6 +80,10 @@ export function applyChlorophyllFieldToGeometry(
     const x = positions.getX(i)
     const z = positions.getZ(i)
     const { lat, lon } = sceneToLatLon(x, z, field.bounds)
+    if (!isInsideModelBounds(lat, lon, field.bounds)) {
+      setOceanBaseVertexColor(colors, i)
+      continue
+    }
     const chl = sampleChlorophyllField(field, lat, lon)
     const c = chlorophyllToColor(chl, range.min, range.max)
     colors.setXYZ(i, c.r, c.g, c.b)

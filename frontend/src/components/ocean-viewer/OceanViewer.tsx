@@ -38,12 +38,16 @@ import type { AnalysisMode, SpatialAnalysisSnapshot } from '../../types/analysis
 import { applySpatialAnalysisToGeometry, applyNeutralOceanGeometry } from '../../utils/spatialAnalysisField'
 import { usesSpatialMeshOverlay } from '../../utils/spatialValidation'
 import { DEFAULT_REGION } from '../../data/defaults'
-import { INDIAN_OCEAN_COASTLINES } from '../../data/indianOceanCoastlines'
+import { INDIAN_OCEAN_COASTLINE, INDIAN_OCEAN_LAND } from '../../data/indianOceanMap'
 import {
-  createCoastlineGeometry,
+  createCoastlineGeometryFromGeoJSON,
+  createGraticuleGeometry,
+  createLandGeometriesFromGeoJSON,
+} from '../../utils/geoJsonMap'
+import {
   createDepthSliceGeometry,
-  createModelSurfaceGeometry,
   createOceanBaseGeometry,
+  createViewSurfaceGeometry,
 } from '../../utils/oceanGeometry'
 import {
   INDIAN_OCEAN_VIEW_BOUNDS,
@@ -426,8 +430,8 @@ export function OceanViewer({
     scene.fog = new THREE.FogExp2(0x06121f, 0.018)
 
     const camera = new THREE.PerspectiveCamera(52, width / height, 0.1, 250)
-    const modelCenter = latLonToSceneXZ(12.5, 75, INDIAN_OCEAN_VIEW_BOUNDS)
-    camera.position.set(modelCenter.x + 6, 24, modelCenter.z + 22)
+    const viewCenter = latLonToSceneXZ(10, 72.5, INDIAN_OCEAN_VIEW_BOUNDS)
+    camera.position.set(viewCenter.x + 4, 28, viewCenter.z + 26)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -441,44 +445,64 @@ export function OceanViewer({
     controls.maxPolarAngle = Math.PI / 2.05
     controls.minDistance = 12
     controls.maxDistance = 80
-    controls.target.set(modelCenter.x, -1, modelCenter.z)
+    controls.target.set(viewCenter.x, -1, viewCenter.z)
 
-    scene.add(new THREE.AmbientLight(0x1a4a5c, 0.6))
-    const dirLight = new THREE.DirectionalLight(0x48d5c3, 0.8)
-    dirLight.position.set(10, 20, 10)
+    scene.add(new THREE.AmbientLight(0x1a4a5c, 0.65))
+    const dirLight = new THREE.DirectionalLight(0x48d5c3, 0.85)
+    dirLight.position.set(10, 24, 8)
     scene.add(dirLight)
 
     const baseOceanMesh = new THREE.Mesh(
       createOceanBaseGeometry(),
       new THREE.MeshPhongMaterial({
-        color: 0x071018,
+        color: 0x051018,
         transparent: true,
-        opacity: 0.92,
+        opacity: 0.95,
         side: THREE.DoubleSide,
       }),
     )
-    baseOceanMesh.position.y = -4.08
+    baseOceanMesh.position.y = -4.1
     scene.add(baseOceanMesh)
 
-    const coastlineGeometry = createCoastlineGeometry(INDIAN_OCEAN_COASTLINES)
+    const graticule = new THREE.LineSegments(
+      createGraticuleGeometry(INDIAN_OCEAN_VIEW_BOUNDS, 10),
+      new THREE.LineBasicMaterial({
+        color: 0x1a3a48,
+        transparent: true,
+        opacity: 0.35,
+      }),
+    )
+    scene.add(graticule)
+
+    const landMaterial = new THREE.MeshPhongMaterial({
+      color: 0x0c1a22,
+      transparent: true,
+      opacity: 0.92,
+      side: THREE.DoubleSide,
+    })
+    for (const landGeom of createLandGeometriesFromGeoJSON(INDIAN_OCEAN_LAND)) {
+      scene.add(new THREE.Mesh(landGeom, landMaterial))
+    }
+
+    const coastlineGeometry = createCoastlineGeometryFromGeoJSON(INDIAN_OCEAN_COASTLINE)
     const coastlines = new THREE.LineSegments(
       coastlineGeometry,
       new THREE.LineBasicMaterial({
-        color: 0x2a8a9a,
+        color: 0x45c8dc,
         transparent: true,
-        opacity: 0.55,
+        opacity: 0.85,
       }),
     )
     scene.add(coastlines)
 
-    const oceanGeometry = createModelSurfaceGeometry(DEFAULT_REGION, 14, 10)
+    const oceanGeometry = createViewSurfaceGeometry(INDIAN_OCEAN_VIEW_BOUNDS, 32, 24)
     const oceanMesh = new THREE.Mesh(
       oceanGeometry,
       new THREE.MeshPhongMaterial({
         vertexColors: true,
         transparent: true,
-        opacity: 0.75,
-        shininess: 30,
+        opacity: 0.82,
+        shininess: 28,
         side: THREE.DoubleSide,
         depthWrite: false,
       }),
@@ -582,9 +606,9 @@ export function OceanViewer({
   useEffect(() => {
     const refs = sceneRef.current
     if (!refs) return
-    const modelCenter = latLonToSceneXZ(12.5, 75, INDIAN_OCEAN_VIEW_BOUNDS)
-    refs.camera.position.set(modelCenter.x + 6, 24, modelCenter.z + 22)
-    refs.controls.target.set(modelCenter.x, -1, modelCenter.z)
+    const viewCenter = latLonToSceneXZ(10, 72.5, INDIAN_OCEAN_VIEW_BOUNDS)
+    refs.camera.position.set(viewCenter.x + 4, 28, viewCenter.z + 26)
+    refs.controls.target.set(viewCenter.x, -1, viewCenter.z)
     refs.controls.update()
   }, [resetToken])
 
