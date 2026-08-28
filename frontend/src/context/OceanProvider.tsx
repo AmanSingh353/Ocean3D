@@ -86,6 +86,37 @@ export function OceanProvider({ children }: OceanProviderProps) {
   const selectedDepthRef = useRef(selectedDepth)
   selectedDepthRef.current = selectedDepth
 
+  const profileCacheRef = useRef<
+    Map<
+      string,
+      {
+        instrument: Instrument
+        profile: InstrumentProfile
+        observationTime: string
+      }
+    >
+  >(new Map())
+
+  const profileCacheKey = useCallback(
+    (instrumentId: string, date: string) => `${instrumentId}:${toDateParam(date)}`,
+    [],
+  )
+
+  const applyCachedProfile = useCallback(
+    (cached: {
+      instrument: Instrument
+      profile: InstrumentProfile
+      observationTime: string
+    }) => {
+      const depth = selectedDepthRef.current
+      setSelectedInstrument({ ...cached.instrument, currentDepth: depth })
+      setInstrumentProfile(cached.profile)
+      setComparison(getComparisonAtDepth(cached.profile, depth))
+      setObservationTime(cached.observationTime)
+    },
+    [],
+  )
+
   const debouncedDepth = useDebouncedValue(selectedDepth, DEPTH_DEBOUNCE_MS)
   const apiDepth = useMemo(() => snapDepth(debouncedDepth), [debouncedDepth])
   const apiCurrentDepth = useMemo(
@@ -332,9 +363,18 @@ export function OceanProvider({ children }: OceanProviderProps) {
 
     const controller = new AbortController()
     const requestedId = selectedInstrumentId
+    const cacheKey = profileCacheKey(requestedId, selectedDate)
+    const cached = profileCacheRef.current.get(cacheKey)
+
+    setProfileError(null)
+
+    if (cached) {
+      applyCachedProfile(cached)
+      setIsProfileLoading(false)
+      return () => controller.abort()
+    }
 
     setIsProfileLoading(true)
-    setProfileError(null)
     setSelectedInstrument(null)
     setInstrumentProfile(null)
     setComparison(null)
@@ -349,11 +389,18 @@ export function OceanProvider({ children }: OceanProviderProps) {
         const depth = selectedDepthRef.current
         const mappedInstrument = mapInstrument(instrumentData, depth)
         const mappedProfile = mapInstrumentProfile(profileData)
+        const formattedTime = formatObservationTime(instrumentData.last_updated)
+
+        profileCacheRef.current.set(cacheKey, {
+          instrument: mappedInstrument,
+          profile: mappedProfile,
+          observationTime: formattedTime,
+        })
 
         setSelectedInstrument(mappedInstrument)
         setInstrumentProfile(mappedProfile)
         setComparison(getComparisonAtDepth(mappedProfile, depth))
-        setObservationTime(formatObservationTime(instrumentData.last_updated))
+        setObservationTime(formattedTime)
         setApiError(null)
       })
       .catch((error: unknown) => {
@@ -363,14 +410,14 @@ export function OceanProvider({ children }: OceanProviderProps) {
         setInstrumentProfile(null)
         setComparison(null)
         setObservationTime('')
-        setProfileError('Unable to load observation')
+        setProfileError('Observation data unavailable')
       })
       .finally(() => {
         if (!controller.signal.aborted) setIsProfileLoading(false)
       })
 
     return () => controller.abort()
-  }, [selectedInstrumentId, selectedDate, refreshToken])
+  }, [selectedInstrumentId, selectedDate, refreshToken, profileCacheKey, applyCachedProfile])
 
   // Recompute comparison when depth changes (profile already loaded)
   useEffect(() => {
@@ -379,7 +426,7 @@ export function OceanProvider({ children }: OceanProviderProps) {
     }
   }, [instrumentProfile, selectedDepth])
 
-  const isLoading = isModelLoading || isInstrumentsLoading || isProfileLoading
+  const isLoading = isModelLoading || isInstrumentsLoading
   const error = apiError ?? modelError
 
   const value = useMemo<OceanContextValue>(

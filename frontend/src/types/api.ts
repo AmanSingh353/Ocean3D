@@ -97,6 +97,10 @@ export interface ApiProfileComparisonPoint {
   depth: number
   observation: number
   model: number
+  salinity_observation?: number | null
+  salinity_model?: number | null
+  chlorophyll_observation?: number | null
+  chlorophyll_model?: number | null
 }
 
 export interface ApiInstrumentProfile {

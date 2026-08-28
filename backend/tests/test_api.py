@@ -71,6 +71,9 @@ def test_instrument_profile():
     assert data["variable"] == "temperature"
     assert len(data["observations"]) == len(data["comparison"])
     assert data["observations"][0]["depth"] == 0
+    point = data["comparison"][0]
+    assert point["salinity_observation"] is not None
+    assert point["chlorophyll_observation"] is not None
 
 
 def test_instrument_not_found():

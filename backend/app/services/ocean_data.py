@@ -186,6 +186,28 @@ class OceanDataService:
         self.validate_date(date)
         return _compute_temperature(latitude, longitude, float(depth), date)
 
+    def get_salinity_at_point(
+        self,
+        latitude: float,
+        longitude: float,
+        depth: int,
+        date: str,
+    ) -> float:
+        self.validate_depth_range(depth)
+        self.validate_date(date)
+        return _compute_salinity(latitude, longitude, float(depth), date)
+
+    def get_chlorophyll_at_point(
+        self,
+        latitude: float,
+        longitude: float,
+        depth: int,
+        date: str,
+    ) -> float:
+        self.validate_depth_range(depth)
+        self.validate_date(date)
+        return _compute_chlorophyll(latitude, longitude, float(depth), date)
+
     def get_temperature_field(
         self,
         date: str = "2026-08-24",

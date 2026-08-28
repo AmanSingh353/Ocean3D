@@ -27,6 +27,10 @@ class ProfileComparisonPoint(BaseModel):
     depth: int
     observation: float
     model: float
+    salinity_observation: float | None = None
+    salinity_model: float | None = None
+    chlorophyll_observation: float | None = None
+    chlorophyll_model: float | None = None
 
 
 class InstrumentProfileResponse(BaseModel):

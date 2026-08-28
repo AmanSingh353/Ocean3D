@@ -20,6 +20,17 @@ export interface ProfilePoint {
   depth: number
   model: number
   observation: number
+  salinityModel?: number
+  salinityObservation?: number
+  chlorophyllModel?: number
+  chlorophyllObservation?: number
+}
+
+export interface ProfileSeries {
+  variable: 'temperature' | 'salinity' | 'chlorophyll'
+  label: string
+  unit: string
+  points: { depth: number; model: number; observation: number }[]
 }
 
 export interface InstrumentProfile {

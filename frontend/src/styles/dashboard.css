@@ -1301,6 +1301,20 @@ button {
   padding-bottom: 0;
 }
 
+.detail-section__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.btn--compact {
+  padding: 4px 10px;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
 .subsection-title {
   margin: 0 0 10px;
   font-size: 10px;

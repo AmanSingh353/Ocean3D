@@ -72,11 +72,19 @@ function Dashboard() {
 
   const handleSelectInstrument = useCallback(
     (id: string) => {
+      if (ocean.selectedInstrumentId === id) {
+        setObservationOpen(true)
+        return
+      }
       ocean.selectInstrument(id)
       setObservationOpen(true)
     },
     [ocean],
   )
+
+  const handleClearInstrument = useCallback(() => {
+    ocean.clearInstrumentSelection()
+  }, [ocean])
 
   const markerInstruments = useMemo(
     () =>
@@ -163,6 +171,7 @@ function Dashboard() {
             observationTime={ocean.observationTime}
             profileLoading={ocean.isProfileLoading}
             profileError={ocean.profileError}
+            onClearSelection={handleClearInstrument}
           />
         }
         timeline={

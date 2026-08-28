@@ -13,6 +13,7 @@ import type {
   Instrument,
   InstrumentProfile,
   OceanVariable,
+  ProfileSeries,
 } from '../types/ocean'
 
 export const API_BASE_URL = 'http://127.0.0.1:8000'
@@ -257,16 +258,65 @@ export function mapInstrument(api: ApiInstrument, currentDepth: number): Instrum
 }
 
 export function mapInstrumentProfile(api: ApiInstrumentProfile): InstrumentProfile {
+  const points = api.comparison.map((point) => ({
+    depth: point.depth,
+    model: point.model,
+    observation: point.observation,
+    salinityModel: point.salinity_model ?? undefined,
+    salinityObservation: point.salinity_observation ?? undefined,
+    chlorophyllModel: point.chlorophyll_model ?? undefined,
+    chlorophyllObservation: point.chlorophyll_observation ?? undefined,
+  }))
+
   return {
     instrumentId: api.instrument_id,
     variable: 'temperature',
     date: toDateParam(api.date),
-    points: api.comparison.map((point) => ({
-      depth: point.depth,
-      model: point.model,
-      observation: point.observation,
-    })),
+    points,
   }
+}
+
+export function getProfileSeries(profile: InstrumentProfile): ProfileSeries[] {
+  const series: ProfileSeries[] = [
+    {
+      variable: 'temperature',
+      label: 'Temperature',
+      unit: '°C',
+      points: profile.points.map((p) => ({
+        depth: p.depth,
+        model: p.model,
+        observation: p.observation,
+      })),
+    },
+  ]
+
+  if (profile.points.some((p) => p.salinityModel != null && p.salinityObservation != null)) {
+    series.push({
+      variable: 'salinity',
+      label: 'Salinity',
+      unit: 'PSU',
+      points: profile.points.map((p) => ({
+        depth: p.depth,
+        model: p.salinityModel ?? 0,
+        observation: p.salinityObservation ?? 0,
+      })),
+    })
+  }
+
+  if (profile.points.some((p) => p.chlorophyllModel != null && p.chlorophyllObservation != null)) {
+    series.push({
+      variable: 'chlorophyll',
+      label: 'Chlorophyll',
+      unit: 'mg/m³',
+      points: profile.points.map((p) => ({
+        depth: p.depth,
+        model: p.chlorophyllModel ?? 0,
+        observation: p.chlorophyllObservation ?? 0,
+      })),
+    })
+  }
+
+  return series
 }
 
 export function getComparisonAtDepth(

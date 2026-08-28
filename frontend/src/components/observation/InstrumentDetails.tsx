@@ -1,4 +1,5 @@
 import type { Instrument, InstrumentProfile, ComparisonStats } from '../../types/ocean'
+import { getProfileSeries } from '../../services/oceanApi'
 import { ProfileChart } from './ProfileChart'
 import { ComparisonStatsPanel } from './ComparisonStats'
 
@@ -7,6 +8,7 @@ interface InstrumentDetailsProps {
   profile: InstrumentProfile
   comparison: ComparisonStats
   observationTime: string
+  onClearSelection?: () => void
 }
 
 export function InstrumentDetails({
@@ -14,17 +16,36 @@ export function InstrumentDetails({
   profile,
   comparison,
   observationTime,
+  onClearSelection,
 }: InstrumentDetailsProps) {
-  const typeLabel = instrument.type === 'argo' ? 'ARGO' : 'GLIDER'
+  const typeLabel = instrument.type === 'argo' ? 'ARGO FLOAT' : 'GLIDER'
   const latDir = instrument.latitude >= 0 ? 'N' : 'S'
   const lonDir = instrument.longitude >= 0 ? 'E' : 'W'
+  const profileSeries = getProfileSeries(profile)
 
   return (
     <div className="instrument-details">
-      <section className="detail-section">
-        <h4 className="subsection-title">PLATFORM</h4>
-        <div className="platform-badge">{typeLabel}</div>
-        <div className="platform-name">{instrument.instrumentLabel}</div>
+      <section className="detail-section detail-section--header">
+        <div className="detail-section__row">
+          <div>
+            <div className="platform-badge">{typeLabel}</div>
+            <div className="platform-name">{instrument.id}</div>
+          </div>
+          {onClearSelection ? (
+            <button
+              type="button"
+              className="btn btn--ghost btn--compact"
+              onClick={onClearSelection}
+              aria-label="Clear platform selection"
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
+        <div className="detail-row">
+          <span className="detail-label">Platform ID:</span>
+          <span className="detail-value">{instrument.id}</span>
+        </div>
         <div className="detail-row">
           <span className="detail-label">Status:</span>
           <span className="detail-value detail-value--active">{instrument.status}</span>
@@ -51,21 +72,27 @@ export function InstrumentDetails({
       <section className="detail-section">
         <h4 className="subsection-title">TIME</h4>
         <div className="detail-coords">
-          {observationTime.split('\n').map((line) => <span key={line}>{line}<br /></span>)}
+          {observationTime
+            ? observationTime.split('\n').map((line) => <span key={line}>{line}<br /></span>)
+            : 'N/A'}
         </div>
       </section>
-      <section className="detail-section"><ProfileChart data={profile.points} maxDepth={instrument.maxDepth} /></section>
+      {profileSeries.map((series) => (
+        <section key={series.variable} className="detail-section">
+          <ProfileChart series={series} maxDepth={instrument.maxDepth} />
+        </section>
+      ))}
       <ComparisonStatsPanel stats={comparison} />
       <section className="detail-section">
         <h4 className="subsection-title">PLATFORM DETAILS</h4>
-        <div className="detail-row"><span className="detail-label">Instrument:</span><span className="detail-value">{instrument.instrumentLabel}</span></div>
-        <div className="detail-row"><span className="detail-label">Type:</span><span className="detail-value">{instrument.platformType}</span></div>
-        <div className="detail-row"><span className="detail-label">Data quality:</span><span className="detail-value detail-value--good">{instrument.dataQuality}</span></div>
-      </section>
-      <section className="detail-section detail-actions">
-        <button type="button" className="btn btn--ghost btn--block">View Full Profile</button>
-        <button type="button" className="btn btn--ghost btn--block">Compare</button>
-        <button type="button" className="btn btn--primary btn--block">Export</button>
+        <div className="detail-row">
+          <span className="detail-label">Type:</span>
+          <span className="detail-value">{instrument.platformType}</span>
+        </div>
+        <div className="detail-row">
+          <span className="detail-label">Data quality:</span>
+          <span className="detail-value detail-value--good">{instrument.dataQuality}</span>
+        </div>
       </section>
     </div>
   )

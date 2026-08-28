@@ -9,6 +9,7 @@ interface ObservationPanelProps {
   observationTime: string
   profileLoading: boolean
   profileError: string | null
+  onClearSelection?: () => void
 }
 
 export function ObservationPanel({
@@ -19,6 +20,7 @@ export function ObservationPanel({
   observationTime,
   profileLoading,
   profileError,
+  onClearSelection,
 }: ObservationPanelProps) {
   const showEmpty =
     !selectedInstrumentId && !profileLoading && !profileError
@@ -39,13 +41,25 @@ export function ObservationPanel({
       )}
       {profileError && !profileLoading && (
         <div className="observation-empty">
-          <p className="observation-empty__title">Unable to load observation</p>
+          <p className="observation-empty__title">Observation data unavailable</p>
+          {selectedInstrumentId ? (
+            <p className="observation-empty__hint">
+              Could not load profile for {selectedInstrumentId}.
+            </p>
+          ) : null}
+          {onClearSelection ? (
+            <button type="button" className="btn btn--ghost" onClick={onClearSelection}>
+              Clear selection
+            </button>
+          ) : null}
         </div>
       )}
       {showEmpty ? (
         <div className="observation-empty">
           <p className="observation-empty__title">Select an Argo Float or Glider</p>
-          <p className="observation-empty__hint">Click a platform in the ocean view to inspect its profile.</p>
+          <p className="observation-empty__hint">
+            Click a platform in the ocean view to inspect its profile.
+          </p>
         </div>
       ) : null}
       {showDetails ? (
@@ -54,6 +68,7 @@ export function ObservationPanel({
           profile={profile}
           comparison={comparison}
           observationTime={observationTime}
+          onClearSelection={onClearSelection}
         />
       ) : null}
     </div>

@@ -24,8 +24,14 @@ export function InstrumentMarker({
       type="button"
       className={`instrument-marker ${colorClass} ${selected ? 'instrument-marker--selected' : ''}`}
       style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
-      onClick={() => onSelect(instrument.id)}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation()
+        e.preventDefault()
+        onSelect(instrument.id)
+      }}
       aria-label={`Select ${instrument.name}`}
+      aria-pressed={selected}
     >
       <span className="instrument-marker__core" />
       <span className="instrument-marker__pulse" />

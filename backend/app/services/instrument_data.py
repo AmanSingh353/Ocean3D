@@ -133,24 +133,53 @@ class InstrumentDataService:
         comparison: list[ProfileComparisonPoint] = []
 
         for depth in depths:
-            model_value = ocean_data_service.get_temperature_at_point(
+            temp_model = ocean_data_service.get_temperature_at_point(
                 record.latitude,
                 record.longitude,
                 depth,
                 date,
             )
-            observation_value = _observation_value(
-                model_value,
+            temp_observation = _observation_value(
+                temp_model,
                 depth,
                 record.observation_offset,
                 record.id,
             )
-            observations.append(ProfileObservation(depth=depth, value=observation_value))
+
+            sal_model = ocean_data_service.get_salinity_at_point(
+                record.latitude,
+                record.longitude,
+                depth,
+                date,
+            )
+            sal_observation = round(
+                sal_model + record.observation_offset * 0.08
+                + math.sin(depth * 0.015 + ord(record.id[-1])) * 0.05,
+                2,
+            )
+
+            chl_model = ocean_data_service.get_chlorophyll_at_point(
+                record.latitude,
+                record.longitude,
+                depth,
+                date,
+            )
+            chl_observation = round(
+                max(0.01, chl_model + record.observation_offset * 0.06
+                    + math.sin(depth * 0.018 + ord(record.id[-1])) * 0.04),
+                3,
+            )
+
+            observations.append(ProfileObservation(depth=depth, value=temp_observation))
             comparison.append(
                 ProfileComparisonPoint(
                     depth=depth,
-                    observation=observation_value,
-                    model=round(model_value, 1),
+                    observation=temp_observation,
+                    model=round(temp_model, 1),
+                    salinity_observation=sal_observation,
+                    salinity_model=round(sal_model, 2),
+                    chlorophyll_observation=chl_observation,
+                    chlorophyll_model=round(chl_model, 3),
                 )
             )
 
