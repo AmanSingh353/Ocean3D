@@ -1,5 +1,6 @@
 import type * as THREE from 'three'
 import { projectSceneToScreen } from '../../utils/geoProjection'
+import { formatWorldCoordinates } from '../../utils/geoDebugOverlay'
 
 interface GeoDebugLabelProps {
   lat: number
@@ -11,6 +12,7 @@ interface GeoDebugLabelProps {
   hostWidth: number
   hostHeight: number
   label?: string
+  showWorldCoords?: boolean
 }
 
 /** Temporary debug label projected from geographic scene coordinates. */
@@ -24,11 +26,16 @@ export function GeoDebugLabel({
   hostWidth,
   hostHeight,
   label,
+  showWorldCoords = false,
 }: GeoDebugLabelProps) {
   if (!camera || hostWidth <= 0 || hostHeight <= 0) return null
 
   const screen = projectSceneToScreen(sceneX, sceneY, sceneZ, camera, hostWidth, hostHeight)
   if (!screen.visible) return null
+
+  const worldHint = showWorldCoords
+    ? formatWorldCoordinates(lat, lon, sceneY)
+    : null
 
   return (
     <div
@@ -38,7 +45,8 @@ export function GeoDebugLabel({
         top: `${screen.y - 28}px`,
       }}
     >
-      {label ?? `${lat.toFixed(1)}°N · ${lon.toFixed(1)}°E`}
+      <span>{label ?? `${lat.toFixed(1)}°N · ${lon.toFixed(1)}°E`}</span>
+      {worldHint ? <span className="geo-debug-label__world">{worldHint}</span> : null}
     </div>
   )
 }

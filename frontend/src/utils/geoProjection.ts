@@ -18,6 +18,9 @@ export const GEO_REFERENCE_Y = 0
 /** Model scalar field surface — slightly above land fill to prevent z-fighting. */
 export const GEO_MODEL_SURFACE_Y = GEO_REFERENCE_Y + 0.05
 
+/** Coastline outline sits above the model raster to avoid z-fighting. */
+export const GEO_COASTLINE_Y = GEO_MODEL_SURFACE_Y + 0.03
+
 /** Observation marker height above the geographic reference plane. */
 export const GEO_MARKER_Y = GEO_REFERENCE_Y + 0.35
 

@@ -6,6 +6,7 @@ import type {
   Position,
 } from '../types/geojson'
 import {
+  GEO_COASTLINE_Y,
   GEO_REFERENCE_Y,
   INDIAN_OCEAN_VIEW_BOUNDS,
   latLonToWorld,
@@ -138,7 +139,7 @@ export function createLandGeometriesFromGeoJSON(
 export function createCoastlineGeometryFromGeoJSON(
   collection: GeoJsonFeatureCollection,
   viewBounds: GeoBounds = INDIAN_OCEAN_VIEW_BOUNDS,
-  y = GEO_REFERENCE_Y + 0.04,
+  y = GEO_COASTLINE_Y,
 ): THREE.BufferGeometry {
   const positions: number[] = []
   for (const feature of collection.features) {

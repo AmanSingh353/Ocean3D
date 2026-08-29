@@ -44,14 +44,17 @@ import {
   getModelGridMeta,
   gridsEqual,
 } from '../../utils/modelGridGeometry'
+import { createModelFieldMaterial, setModelFieldOpacity } from '../../utils/modelFieldMaterial'
 import { createGeoDebugGuideGeometry } from '../../utils/geoDebugGuide'
 import {
-  boundsCornerDebugPoints,
+  buildGeoValidationDebugPoints,
+  buildGeoValidationSummary,
   createBoundsOutlineGeometry,
   createGeoReferenceMarkersGeometry,
   isGeoDebugEnabled,
   type GeoDebugPoint,
 } from '../../utils/geoDebugOverlay'
+import { resolveModelBounds } from '../../utils/modelDomain'
 import { GeoDebugLabel } from './GeoDebugLabel'
 import {
   INDIAN_OCEAN_VIEW_BOUNDS,
@@ -278,9 +281,9 @@ export function OceanViewer({
     const baseOpacity = modelLayerEnabled ? modelOpacity / 100 : 0
     const effectiveOpacity = isCurrentMode ? baseOpacity * 0.2 : baseOpacity
 
-    const mat = refs.oceanMesh.material as THREE.MeshBasicMaterial
+    const mat = refs.oceanMesh.material as THREE.ShaderMaterial
+    setModelFieldOpacity(mat, effectiveOpacity)
     mat.side = THREE.DoubleSide
-    mat.opacity = effectiveOpacity
     mat.visible = effectiveOpacity > 0
 
     refs.oceanMesh.scale.set(1, 1, 1)
@@ -528,20 +531,7 @@ export function OceanViewer({
     geoGroup.add(coastlines)
 
     const oceanGeometry = createModelGridGeometry(defaultModelGrid())
-    const oceanMesh = new THREE.Mesh(
-      oceanGeometry,
-      new THREE.MeshBasicMaterial({
-        vertexColors: true,
-        transparent: true,
-        opacity: 0.82,
-        side: THREE.DoubleSide,
-        depthTest: true,
-        depthWrite: false,
-        polygonOffset: true,
-        polygonOffsetFactor: -2,
-        polygonOffsetUnits: -2,
-      }),
-    )
+    const oceanMesh = new THREE.Mesh(oceanGeometry, createModelFieldMaterial(0.82))
     oceanMesh.renderOrder = GEO_RENDER_ORDER.modelField
     oceanMesh.frustumCulled = false
     geoGroup.add(oceanMesh)
@@ -571,11 +561,14 @@ export function OceanViewer({
     geoDebugOutline.renderOrder = GEO_RENDER_ORDER.geoDebug
     geoGroup.add(geoDebugOutline)
 
-    const geoDebugReferencePoints: GeoDebugPoint[] = [
-      { lat: ARGO_014_LAT, lon: ARGO_014_LON, label: 'ARGO-014' },
-      { lat: ARGO_021_LAT, lon: ARGO_021_LON, label: 'ARGO-021' },
-      ...boundsCornerDebugPoints(DEFAULT_REGION),
-    ]
+    const geoDebugReferencePoints = buildGeoValidationDebugPoints(
+      DEFAULT_REGION,
+      defaultModelGrid(),
+      [
+        { lat: ARGO_014_LAT, lon: ARGO_014_LON, label: 'ARGO-014' },
+        { lat: ARGO_021_LAT, lon: ARGO_021_LON, label: 'ARGO-021' },
+      ],
+    )
     const geoDebugMarkers = new THREE.LineSegments(
       createGeoReferenceMarkersGeometry(geoDebugReferencePoints),
       new THREE.LineBasicMaterial({
@@ -671,6 +664,38 @@ export function OceanViewer({
 
   const showGeoDebug = GEO_DEBUG || selectedInstrumentId?.toUpperCase() === 'ARGO-014'
 
+  const activeModelBounds = useMemo(() => {
+    const field =
+      temperatureField ?? salinityField ?? chlorophyllField ?? currentField ?? null
+    return resolveModelBounds(field?.bounds, activeModelGrid)
+  }, [
+    temperatureField,
+    salinityField,
+    chlorophyllField,
+    currentField,
+    activeModelGrid,
+  ])
+
+  const instrumentDebugPoints = useMemo(
+    (): GeoDebugPoint[] =>
+      instruments.map((inst) => ({
+        lat: inst.latitude,
+        lon: inst.longitude,
+        label: `${inst.id} ${inst.latitude.toFixed(1)}°N ${inst.longitude.toFixed(1)}°E`,
+      })),
+    [instruments],
+  )
+
+  const geoDebugLabels = useMemo(
+    () => buildGeoValidationDebugPoints(activeModelBounds, activeModelGrid, instrumentDebugPoints),
+    [activeModelBounds, activeModelGrid, instrumentDebugPoints],
+  )
+
+  const geoValidationSummary = useMemo(
+    () => buildGeoValidationSummary(activeModelBounds, activeModelGrid, apiModelDepth, selectedDepth),
+    [activeModelBounds, activeModelGrid, apiModelDepth, selectedDepth],
+  )
+
   useEffect(() => {
     const refs = sceneRef.current
     if (!refs) return
@@ -679,14 +704,16 @@ export function OceanViewer({
     refs.geoDebugMarkers.visible = GEO_DEBUG
   }, [showGeoDebug, selectedInstrumentId])
 
-  const geoDebugLabels = useMemo(() => {
-    if (!GEO_DEBUG) return [] as GeoDebugPoint[]
-    return [
-      { lat: ARGO_014_LAT, lon: ARGO_014_LON, label: 'ARGO-014' },
-      { lat: ARGO_021_LAT, lon: ARGO_021_LON, label: 'ARGO-021' },
-      ...boundsCornerDebugPoints(DEFAULT_REGION),
-    ]
-  }, [])
+  useEffect(() => {
+    const refs = sceneRef.current
+    if (!refs || !GEO_DEBUG) return
+
+    refs.geoDebugOutline.geometry.dispose()
+    refs.geoDebugOutline.geometry = createBoundsOutlineGeometry(activeModelBounds)
+
+    refs.geoDebugMarkers.geometry.dispose()
+    refs.geoDebugMarkers.geometry = createGeoReferenceMarkersGeometry(geoDebugLabels)
+  }, [GEO_DEBUG, activeModelBounds, geoDebugLabels])
 
   const argo014ScenePos = useMemo(
     () => latLonToWorld(ARGO_014_LAT, ARGO_014_LON, GEO_MARKER_Y, INDIAN_OCEAN_VIEW_BOUNDS),
@@ -851,6 +878,9 @@ export function OceanViewer({
           onFullscreen={onFullscreen}
         />
       </div>
+      {GEO_DEBUG ? (
+        <div className="geo-debug-panel">{geoValidationSummary}</div>
+      ) : null}
       <div className="ocean-viewer__markers">
         {showGeoDebug && selectedInstrumentId?.toUpperCase() === 'ARGO-014' ? (
           <GeoDebugLabel
@@ -867,7 +897,8 @@ export function OceanViewer({
         ) : null}
         {GEO_DEBUG
           ? geoDebugLabels.map((point) => {
-              const pos = latLonToWorld(point.lat, point.lon, GEO_MARKER_Y, INDIAN_OCEAN_VIEW_BOUNDS)
+              const y = point.y ?? GEO_MARKER_Y
+              const pos = latLonToWorld(point.lat, point.lon, y, INDIAN_OCEAN_VIEW_BOUNDS)
               return (
                 <GeoDebugLabel
                   key={point.label}
@@ -877,6 +908,7 @@ export function OceanViewer({
                   sceneX={pos.x}
                   sceneY={pos.y}
                   sceneZ={pos.z}
+                  showWorldCoords
                   camera={sceneRef.current?.camera ?? null}
                   hostWidth={canvasSize.width}
                   hostHeight={canvasSize.height}

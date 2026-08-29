@@ -5,7 +5,7 @@ import {
   type TemperatureRange,
 } from './temperatureColor'
 import { worldToLatLon, INDIAN_OCEAN_VIEW_BOUNDS } from './geoProjection'
-import { colorGridVertices, isInsideModelBounds, setOceanBaseVertexColor } from './fieldSampling'
+import { colorGridVertices, bilinearSampleGrid, isInsideModelBounds, setOceanBaseVertexColor } from './fieldSampling'
 import { getModelGridMeta, paintModelGridFromValues } from './modelGridGeometry'
 import { isOnLand } from './landMask'
 
@@ -48,37 +48,7 @@ export function sampleTemperatureField(
   lat: number,
   lon: number,
 ): number {
-  const { latitudes, longitudes } = field.grid
-  const latClamped = Math.max(
-    latitudes[0],
-    Math.min(latitudes[latitudes.length - 1], lat),
-  )
-  const lonClamped = Math.max(
-    longitudes[0],
-    Math.min(longitudes[longitudes.length - 1], lon),
-  )
-
-  let latIdx = latitudes.findIndex((v) => v >= latClamped)
-  if (latIdx <= 0) latIdx = 1
-  let lonIdx = longitudes.findIndex((v) => v >= lonClamped)
-  if (lonIdx <= 0) lonIdx = 1
-
-  const lat0 = latitudes[latIdx - 1]
-  const lat1 = latitudes[latIdx]
-  const lon0 = longitudes[lonIdx - 1]
-  const lon1 = longitudes[lonIdx]
-
-  const latT = lat1 === lat0 ? 0 : (latClamped - lat0) / (lat1 - lat0)
-  const lonT = lon1 === lon0 ? 0 : (lonClamped - lon0) / (lon1 - lon0)
-
-  const v00 = field.values[latIdx - 1][lonIdx - 1]
-  const v01 = field.values[latIdx - 1][lonIdx]
-  const v10 = field.values[latIdx][lonIdx - 1]
-  const v11 = field.values[latIdx][lonIdx]
-
-  const top = v00 + lonT * (v01 - v00)
-  const bottom = v10 + lonT * (v11 - v10)
-  return top + latT * (bottom - top)
+  return bilinearSampleGrid(field.values, field.grid, lat, lon) ?? 0
 }
 
 /** Apply API temperature colors to an existing BufferGeometry vertex color attribute. */

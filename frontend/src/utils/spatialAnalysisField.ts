@@ -15,8 +15,8 @@ import { salinityToColor } from './salinityColor'
 import { getTemperatureRange, sampleTemperatureField, sceneToLatLon } from './temperatureField'
 import { temperatureToColor } from './temperatureColor'
 import { findNearestSpatialPoint, getAnalysisValueFromPoint } from './spatialValidation'
-import { isInsideModelBounds, setOceanBaseVertexColor } from './fieldSampling'
-import { getModelGridMeta } from './modelGridGeometry'
+import { isInsideModelBounds } from './fieldSampling'
+import { getModelGridMeta, getCellAlphaAttribute, clearModelFieldVisibility } from './modelGridGeometry'
 import { isOnLand } from './landMask'
 
 const DIM_FACTOR = 0.28
@@ -111,17 +111,25 @@ export function applySpatialAnalysisToGeometry(input: SpatialAnalysisFieldInput)
 
   const positions = geometry.attributes.position
   const colors = geometry.attributes.color as THREE.BufferAttribute
+  const alphas = getCellAlphaAttribute(geometry)
+  const geoLat = geometry.getAttribute('geoLat') as THREE.BufferAttribute | undefined
+  const geoLon = geometry.getAttribute('geoLon') as THREE.BufferAttribute | undefined
   const modelRange = getModelRange(variable, temperatureField, salinityField, chlorophyllField)
   const meta = getModelGridMeta(geometry)
 
+  const hideVertex = (index: number): void => {
+    alphas?.setX(index, 0)
+  }
+
   const paintVertex = (index: number, lat: number, lon: number): void => {
     if (isOnLand(lat, lon) || !isInsideModelBounds(lat, lon, bounds)) {
-      setOceanBaseVertexColor(colors, index)
+      hideVertex(index)
       return
     }
 
     const nearest = findNearestSpatialPoint(lat, lon, points)
     let color: THREE.Color
+    let visible = true
 
     if (nearest) {
       const value = getAnalysisValueFromPoint(nearest, mode)
@@ -135,9 +143,11 @@ export function applySpatialAnalysisToGeometry(input: SpatialAnalysisFieldInput)
         }
       } else {
         color = MISSING_VERTEX_COLOR.clone()
+        visible = mode !== 'observation'
       }
     } else if (mode === 'observation') {
-      color = MISSING_VERTEX_COLOR.clone()
+      hideVertex(index)
+      return
     } else if (modelRange) {
       const modelValue = sampleModelAtLatLon(
         variable,
@@ -147,30 +157,30 @@ export function applySpatialAnalysisToGeometry(input: SpatialAnalysisFieldInput)
         salinityField,
         chlorophyllField,
       )
-      color =
-        modelValue != null
-          ? dimColor(colorScalarValue(variable, modelValue, modelRange.min, modelRange.max))
-          : MISSING_VERTEX_COLOR.clone()
+      if (modelValue != null) {
+        color = dimColor(colorScalarValue(variable, modelValue, modelRange.min, modelRange.max))
+      } else {
+        hideVertex(index)
+        return
+      }
     } else {
-      color = MISSING_VERTEX_COLOR.clone()
+      hideVertex(index)
+      return
     }
 
     colors.setXYZ(index, color.r, color.g, color.b)
+    if (visible) alphas?.setX(index, 1)
   }
 
-  if (meta?.cellVertexRanges) {
-    const { grid, cellVertexRanges } = meta
+  if (meta?.cellVertexRanges && geoLat && geoLon) {
+    const { cellVertexRanges } = meta
     for (const cell of cellVertexRanges) {
-      const lat =
-        (grid.latitudes[cell.latIndex] + grid.latitudes[cell.latIndex + 1]) / 2
-      const lon =
-        (grid.longitudes[cell.lonIndex] + grid.longitudes[cell.lonIndex + 1]) / 2
-      paintVertex(cell.start, lat, lon)
-      for (let v = cell.start + 1; v < cell.start + cell.count; v++) {
-        colors.setXYZ(v, colors.getX(cell.start), colors.getY(cell.start), colors.getZ(cell.start))
+      for (let v = cell.start; v < cell.start + cell.count; v++) {
+        paintVertex(v, geoLat.getX(v), geoLon.getX(v))
       }
     }
     colors.needsUpdate = true
+    if (alphas) alphas.needsUpdate = true
     return
   }
 
@@ -194,13 +204,10 @@ export function applySpatialAnalysisToGeometry(input: SpatialAnalysisFieldInput)
   }
 
   colors.needsUpdate = true
+  if (alphas) alphas.needsUpdate = true
 }
 
-/** Reset ocean mesh to base ocean color (outside model / neutral state). */
+/** Reset ocean mesh — fully transparent until field data is painted. */
 export function applyNeutralOceanGeometry(geometry: THREE.BufferGeometry): void {
-  const colors = geometry.attributes.color as THREE.BufferAttribute
-  for (let i = 0; i < colors.count; i++) {
-    setOceanBaseVertexColor(colors, i)
-  }
-  colors.needsUpdate = true
+  clearModelFieldVisibility(geometry)
 }

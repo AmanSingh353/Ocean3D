@@ -52,21 +52,43 @@ export function isOnLand(lat: number, lon: number): boolean {
   return false
 }
 
-/** Ocean grid cell is renderable when it is not fully covered by land. */
+/** Whether any sample point in a cell lies over ocean. */
+export function cellHasOcean(
+  latMin: number,
+  latMax: number,
+  lonMin: number,
+  lonMax: number,
+): boolean {
+  const latCenter = (latMin + latMax) / 2
+  const lonCenter = (lonMin + lonMax) / 2
+  const samples: [number, number][] = [
+    [latMin, lonMin],
+    [latMin, lonMax],
+    [latMax, lonMin],
+    [latMax, lonMax],
+    [latCenter, lonCenter],
+  ]
+  return samples.some(([lat, lon]) => !isOnLand(lat, lon))
+}
+
+/** Sub-cell is rendered only when its center is over ocean. */
+export function isOceanSubcell(
+  latMin: number,
+  latMax: number,
+  lonMin: number,
+  lonMax: number,
+): boolean {
+  const latCenter = (latMin + latMax) / 2
+  const lonCenter = (lonMin + lonMax) / 2
+  return !isOnLand(latCenter, lonCenter)
+}
+
+/** @deprecated Use isOceanSubcell — kept for callers expecting coarse cell tests. */
 export function isOceanCell(
   latMin: number,
   latMax: number,
   lonMin: number,
   lonMax: number,
 ): boolean {
-  const corners: [number, number][] = [
-    [latMin, lonMin],
-    [latMin, lonMax],
-    [latMax, lonMin],
-    [latMax, lonMax],
-  ]
-  if (corners.some(([lat, lon]) => !isOnLand(lat, lon))) return true
-  const latCenter = (latMin + latMax) / 2
-  const lonCenter = (lonMin + lonMax) / 2
-  return !isOnLand(latCenter, lonCenter)
+  return isOceanSubcell(latMin, latMax, lonMin, lonMax)
 }
