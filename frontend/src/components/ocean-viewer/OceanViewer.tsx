@@ -31,7 +31,7 @@ import { VisualizationToolbar, type ViewMode } from './VisualizationToolbar'
 import type { AnalysisMode, SpatialAnalysisSnapshot } from '../../types/analysis'
 import { applySpatialAnalysisToGeometry, applyNeutralOceanGeometry } from '../../utils/spatialAnalysisField'
 import { usesSpatialMeshOverlay } from '../../utils/spatialValidation'
-import { defaultModelGrid } from '../../data/defaults'
+import { defaultModelGrid, DEFAULT_REGION } from '../../data/defaults'
 import { INDIAN_OCEAN_COASTLINE, INDIAN_OCEAN_LAND } from '../../data/indianOceanMap'
 import {
   createCoastlineGeometryFromGeoJSON,
@@ -45,14 +45,31 @@ import {
   gridsEqual,
 } from '../../utils/modelGridGeometry'
 import { createGeoDebugGuideGeometry } from '../../utils/geoDebugGuide'
+import {
+  boundsCornerDebugPoints,
+  createBoundsOutlineGeometry,
+  createGeoReferenceMarkersGeometry,
+  isGeoDebugEnabled,
+  type GeoDebugPoint,
+} from '../../utils/geoDebugOverlay'
 import { GeoDebugLabel } from './GeoDebugLabel'
 import {
   INDIAN_OCEAN_VIEW_BOUNDS,
   GEO_MARKER_Y,
-  latLonToSceneXZ,
-  latLonToSceneXYZ,
+  latLonToWorld,
   projectSceneToScreen,
 } from '../../utils/geoProjection'
+
+/** Stable draw order for coplanar geographic layers (higher = drawn later). */
+const GEO_RENDER_ORDER = {
+  baseOcean: 0,
+  graticule: 1,
+  land: 2,
+  modelField: 10,
+  coastlines: 11,
+  currents: 12,
+  geoDebug: 20,
+} as const
 
 interface OceanViewerProps {
   selectedVariable: OceanVariable
@@ -97,6 +114,12 @@ interface MarkerScreenPosition {
 /** ARGO-014 verification coordinates (backend source of truth). */
 const ARGO_014_LAT = 15.8
 const ARGO_014_LON = 76.1
+
+/** ARGO-021 verification coordinates (backend source of truth). */
+const ARGO_021_LAT = 9.8
+const ARGO_021_LON = 70.4
+
+const GEO_DEBUG = isGeoDebugEnabled()
 
 export function OceanViewer({
   selectedVariable,
@@ -151,6 +174,8 @@ export function OceanViewer({
     geoGroup: THREE.Group
     oceanMesh: THREE.Mesh
     geoDebugGuide: THREE.LineSegments
+    geoDebugOutline: THREE.LineSegments
+    geoDebugMarkers: THREE.LineSegments
     currents: THREE.Group
   } | null>(null)
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 })
@@ -253,7 +278,8 @@ export function OceanViewer({
     const baseOpacity = modelLayerEnabled ? modelOpacity / 100 : 0
     const effectiveOpacity = isCurrentMode ? baseOpacity * 0.2 : baseOpacity
 
-    const mat = refs.oceanMesh.material as THREE.MeshPhongMaterial
+    const mat = refs.oceanMesh.material as THREE.MeshBasicMaterial
+    mat.side = THREE.DoubleSide
     mat.opacity = effectiveOpacity
     mat.visible = effectiveOpacity > 0
 
@@ -292,6 +318,7 @@ export function OceanViewer({
     if (meta && gridsEqual(meta.grid, activeModelGrid)) return
     refs.oceanMesh.geometry.dispose()
     refs.oceanMesh.geometry = createModelGridGeometry(activeModelGrid)
+    refs.oceanMesh.geometry.computeBoundingSphere()
   }, [activeModelGrid])
 
   // Update vertex colors when the API temperature field changes — not in the render loop
@@ -415,19 +442,24 @@ export function OceanViewer({
     scene.fog = new THREE.FogExp2(0x06121f, 0.018)
 
     const camera = new THREE.PerspectiveCamera(52, width / height, 0.1, 250)
-    const viewCenter = latLonToSceneXZ(10, 72.5, INDIAN_OCEAN_VIEW_BOUNDS)
-    camera.position.set(viewCenter.x + 4, 28, viewCenter.z + 26)
+    const viewCenter = latLonToWorld(10, 72.5, 0, INDIAN_OCEAN_VIEW_BOUNDS)
+    if (GEO_DEBUG) {
+      camera.position.set(viewCenter.x, 72, viewCenter.z)
+    } else {
+      camera.position.set(viewCenter.x + 4, 28, viewCenter.z + 26)
+    }
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setSize(width, height)
     renderer.setClearColor(0x06121f, 1)
+    renderer.sortObjects = true
     host.appendChild(renderer.domElement)
 
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
     controls.dampingFactor = 0.06
-    controls.maxPolarAngle = Math.PI / 2.05
+    controls.maxPolarAngle = Math.PI - 0.02
     controls.minDistance = 12
     controls.maxDistance = 80
     controls.target.set(viewCenter.x, -1, viewCenter.z)
@@ -448,8 +480,10 @@ export function OceanViewer({
         transparent: true,
         opacity: 0.95,
         side: THREE.DoubleSide,
+        depthWrite: false,
       }),
     )
+    baseOceanMesh.renderOrder = GEO_RENDER_ORDER.baseOcean
     geoGroup.add(baseOceanMesh)
 
     const graticule = new THREE.LineSegments(
@@ -458,8 +492,10 @@ export function OceanViewer({
         color: 0x1a3a48,
         transparent: true,
         opacity: 0.35,
+        depthWrite: false,
       }),
     )
+    graticule.renderOrder = GEO_RENDER_ORDER.graticule
     geoGroup.add(graticule)
 
     const landMaterial = new THREE.MeshPhongMaterial({
@@ -467,9 +503,15 @@ export function OceanViewer({
       transparent: true,
       opacity: 0.92,
       side: THREE.DoubleSide,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
     })
     for (const landGeom of createLandGeometriesFromGeoJSON(INDIAN_OCEAN_LAND)) {
-      geoGroup.add(new THREE.Mesh(landGeom, landMaterial))
+      const landMesh = new THREE.Mesh(landGeom, landMaterial)
+      landMesh.renderOrder = GEO_RENDER_ORDER.land
+      geoGroup.add(landMesh)
     }
 
     const coastlineGeometry = createCoastlineGeometryFromGeoJSON(INDIAN_OCEAN_COASTLINE)
@@ -479,22 +521,29 @@ export function OceanViewer({
         color: 0x45c8dc,
         transparent: true,
         opacity: 0.85,
+        depthWrite: false,
       }),
     )
+    coastlines.renderOrder = GEO_RENDER_ORDER.coastlines
     geoGroup.add(coastlines)
 
     const oceanGeometry = createModelGridGeometry(defaultModelGrid())
     const oceanMesh = new THREE.Mesh(
       oceanGeometry,
-      new THREE.MeshPhongMaterial({
+      new THREE.MeshBasicMaterial({
         vertexColors: true,
         transparent: true,
         opacity: 0.82,
-        shininess: 28,
         side: THREE.DoubleSide,
+        depthTest: true,
         depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
       }),
     )
+    oceanMesh.renderOrder = GEO_RENDER_ORDER.modelField
+    oceanMesh.frustumCulled = false
     geoGroup.add(oceanMesh)
 
     const geoDebugGuide = new THREE.LineSegments(
@@ -506,12 +555,44 @@ export function OceanViewer({
       }),
     )
     geoDebugGuide.visible = false
+    geoDebugGuide.renderOrder = GEO_RENDER_ORDER.geoDebug
     geoGroup.add(geoDebugGuide)
 
+    const geoDebugOutline = new THREE.LineSegments(
+      createBoundsOutlineGeometry(DEFAULT_REGION),
+      new THREE.LineBasicMaterial({
+        color: 0xff8844,
+        transparent: true,
+        opacity: 0.85,
+        depthWrite: false,
+      }),
+    )
+    geoDebugOutline.visible = GEO_DEBUG
+    geoDebugOutline.renderOrder = GEO_RENDER_ORDER.geoDebug
+    geoGroup.add(geoDebugOutline)
+
+    const geoDebugReferencePoints: GeoDebugPoint[] = [
+      { lat: ARGO_014_LAT, lon: ARGO_014_LON, label: 'ARGO-014' },
+      { lat: ARGO_021_LAT, lon: ARGO_021_LON, label: 'ARGO-021' },
+      ...boundsCornerDebugPoints(DEFAULT_REGION),
+    ]
+    const geoDebugMarkers = new THREE.LineSegments(
+      createGeoReferenceMarkersGeometry(geoDebugReferencePoints),
+      new THREE.LineBasicMaterial({
+        color: 0x66ffaa,
+        transparent: true,
+        opacity: 0.9,
+      }),
+    )
+    geoDebugMarkers.visible = GEO_DEBUG
+    geoDebugMarkers.renderOrder = GEO_RENDER_ORDER.geoDebug
+    geoGroup.add(geoDebugMarkers)
+
     const currents = new THREE.Group()
+    currents.renderOrder = GEO_RENDER_ORDER.currents
     geoGroup.add(currents)
 
-    sceneRef.current = { camera, renderer, controls, geoGroup, oceanMesh, geoDebugGuide, currents }
+    sceneRef.current = { camera, renderer, controls, geoGroup, oceanMesh, geoDebugGuide, geoDebugOutline, geoDebugMarkers, currents }
 
     const pendingField = temperatureFieldRef.current
     if (pendingField) {
@@ -541,7 +622,7 @@ export function OceanViewer({
         setCanvasSize({ width: host.clientWidth, height: host.clientHeight })
         const next: Record<string, MarkerScreenPosition> = {}
         for (const inst of instrumentsRef.current) {
-          const { x, y, z } = latLonToSceneXYZ(
+          const { x, y, z } = latLonToWorld(
             inst.latitude,
             inst.longitude,
             GEO_MARKER_Y,
@@ -588,16 +669,27 @@ export function OceanViewer({
 
   useEffect(() => { updateOceanAppearance() }, [updateOceanAppearance])
 
-  const showGeoDebug = selectedInstrumentId?.toUpperCase() === 'ARGO-014'
+  const showGeoDebug = GEO_DEBUG || selectedInstrumentId?.toUpperCase() === 'ARGO-014'
 
   useEffect(() => {
     const refs = sceneRef.current
     if (!refs) return
-    refs.geoDebugGuide.visible = showGeoDebug
-  }, [showGeoDebug])
+    refs.geoDebugGuide.visible = selectedInstrumentId?.toUpperCase() === 'ARGO-014'
+    refs.geoDebugOutline.visible = GEO_DEBUG
+    refs.geoDebugMarkers.visible = GEO_DEBUG
+  }, [showGeoDebug, selectedInstrumentId])
+
+  const geoDebugLabels = useMemo(() => {
+    if (!GEO_DEBUG) return [] as GeoDebugPoint[]
+    return [
+      { lat: ARGO_014_LAT, lon: ARGO_014_LON, label: 'ARGO-014' },
+      { lat: ARGO_021_LAT, lon: ARGO_021_LON, label: 'ARGO-021' },
+      ...boundsCornerDebugPoints(DEFAULT_REGION),
+    ]
+  }, [])
 
   const argo014ScenePos = useMemo(
-    () => latLonToSceneXYZ(ARGO_014_LAT, ARGO_014_LON, GEO_MARKER_Y, INDIAN_OCEAN_VIEW_BOUNDS),
+    () => latLonToWorld(ARGO_014_LAT, ARGO_014_LON, GEO_MARKER_Y, INDIAN_OCEAN_VIEW_BOUNDS),
     [],
   )
 
@@ -612,8 +704,12 @@ export function OceanViewer({
   useEffect(() => {
     const refs = sceneRef.current
     if (!refs) return
-    const viewCenter = latLonToSceneXZ(10, 72.5, INDIAN_OCEAN_VIEW_BOUNDS)
-    refs.camera.position.set(viewCenter.x + 4, 28, viewCenter.z + 26)
+    const viewCenter = latLonToWorld(10, 72.5, 0, INDIAN_OCEAN_VIEW_BOUNDS)
+    if (GEO_DEBUG) {
+      refs.camera.position.set(viewCenter.x, 72, viewCenter.z)
+    } else {
+      refs.camera.position.set(viewCenter.x + 4, 28, viewCenter.z + 26)
+    }
     refs.controls.target.set(viewCenter.x, -1, viewCenter.z)
     refs.controls.update()
   }, [resetToken])
@@ -756,10 +852,11 @@ export function OceanViewer({
         />
       </div>
       <div className="ocean-viewer__markers">
-        {showGeoDebug ? (
+        {showGeoDebug && selectedInstrumentId?.toUpperCase() === 'ARGO-014' ? (
           <GeoDebugLabel
             lat={ARGO_014_LAT}
             lon={ARGO_014_LON}
+            label="ARGO-014"
             sceneX={argo014ScenePos.x}
             sceneY={argo014ScenePos.y}
             sceneZ={argo014ScenePos.z}
@@ -768,6 +865,25 @@ export function OceanViewer({
             hostHeight={canvasSize.height}
           />
         ) : null}
+        {GEO_DEBUG
+          ? geoDebugLabels.map((point) => {
+              const pos = latLonToWorld(point.lat, point.lon, GEO_MARKER_Y, INDIAN_OCEAN_VIEW_BOUNDS)
+              return (
+                <GeoDebugLabel
+                  key={point.label}
+                  lat={point.lat}
+                  lon={point.lon}
+                  label={point.label}
+                  sceneX={pos.x}
+                  sceneY={pos.y}
+                  sceneZ={pos.z}
+                  camera={sceneRef.current?.camera ?? null}
+                  hostWidth={canvasSize.width}
+                  hostHeight={canvasSize.height}
+                />
+              )
+            })
+          : null}
         {visibleInstruments.map((inst) => {
           const spatialPoint = spatialPointById.get(inst.id)
           return (

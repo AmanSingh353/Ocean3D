@@ -8,14 +8,14 @@ import type {
 import {
   GEO_REFERENCE_Y,
   INDIAN_OCEAN_VIEW_BOUNDS,
-  latLonToSceneXZ,
+  latLonToWorld,
   type GeoBounds,
 } from './geoProjection'
 
-/** Shared 2D map projection used by all geographic layers (X = lon, Y = lat → scene Z). */
+/** Shared 2D map projection used by all geographic layers (X = lon, Z = lat). */
 function ringToMapPoints(ring: Position[], viewBounds: GeoBounds): THREE.Vector2[] {
   return ring.map(([lon, lat]) => {
-    const { x, z } = latLonToSceneXZ(lat, lon, viewBounds)
+    const { x, z } = latLonToWorld(lat, lon, GEO_REFERENCE_Y, viewBounds)
     return new THREE.Vector2(x, z)
   })
 }
@@ -29,8 +29,8 @@ function pushMapLine(
   for (let i = 0; i < ring.length - 1; i++) {
     const [lon1, lat1] = ring[i]
     const [lon2, lat2] = ring[i + 1]
-    const p1 = latLonToSceneXZ(lat1, lon1, viewBounds)
-    const p2 = latLonToSceneXZ(lat2, lon2, viewBounds)
+    const p1 = latLonToWorld(lat1, lon1, y, viewBounds)
+    const p2 = latLonToWorld(lat2, lon2, y, viewBounds)
     positions.push(p1.x, y, p1.z, p2.x, y, p2.z)
   }
 }
@@ -193,10 +193,10 @@ export function createBoundsQuadGeometry(
   viewBounds: GeoBounds = INDIAN_OCEAN_VIEW_BOUNDS,
   y = GEO_REFERENCE_Y,
 ): THREE.BufferGeometry {
-  const sw = latLonToSceneXZ(viewBounds.lat_min, viewBounds.lon_min, viewBounds)
-  const se = latLonToSceneXZ(viewBounds.lat_min, viewBounds.lon_max, viewBounds)
-  const ne = latLonToSceneXZ(viewBounds.lat_max, viewBounds.lon_max, viewBounds)
-  const nw = latLonToSceneXZ(viewBounds.lat_max, viewBounds.lon_min, viewBounds)
+  const sw = latLonToWorld(viewBounds.lat_min, viewBounds.lon_min, y, viewBounds)
+  const se = latLonToWorld(viewBounds.lat_min, viewBounds.lon_max, y, viewBounds)
+  const ne = latLonToWorld(viewBounds.lat_max, viewBounds.lon_max, y, viewBounds)
+  const nw = latLonToWorld(viewBounds.lat_max, viewBounds.lon_min, y, viewBounds)
 
   const positions = new Float32Array([
     sw.x, y, sw.z, se.x, y, se.z, nw.x, y, nw.z,

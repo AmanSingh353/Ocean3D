@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "geo:clip": "node scripts/clip-indian-ocean-geo.mjs"
+    "geo:clip": "node scripts/clip-indian-ocean-geo.mjs",
+    "geo:verify": "node scripts/verify-geo-alignment.mjs"
   },
   "dependencies": {
     "@types/three": "^0.185.4",

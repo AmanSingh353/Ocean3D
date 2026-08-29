@@ -1,8 +1,7 @@
 import * as THREE from 'three'
 import type { ApiCurrentField } from '../types/api'
 import { DEFAULT_REGION } from '../data/defaults'
-import { latLonToSceneXZ, GEO_MODEL_SURFACE_Y, INDIAN_OCEAN_VIEW_BOUNDS } from './geoProjection'
-import { sceneToLatLon } from './temperatureField'
+import { latLonToWorld, worldToLatLon, GEO_MODEL_SURFACE_Y, INDIAN_OCEAN_VIEW_BOUNDS } from './geoProjection'
 
 export interface CurrentSample {
   u: number
@@ -84,7 +83,8 @@ export const CURRENT_ARROW_POSITIONS: readonly { x: number; z: number }[] = (() 
   const positions: { x: number; z: number }[] = []
   for (let lat = bounds.lat_min; lat <= bounds.lat_max; lat += 3) {
     for (let lon = bounds.lon_min; lon <= bounds.lon_max; lon += 4) {
-      positions.push(latLonToSceneXZ(lat, lon, INDIAN_OCEAN_VIEW_BOUNDS))
+      const { x, z } = latLonToWorld(lat, lon, GEO_MODEL_SURFACE_Y, INDIAN_OCEAN_VIEW_BOUNDS)
+      positions.push({ x, z })
     }
   }
   return positions
@@ -122,7 +122,7 @@ export function applyCurrentFieldToGroup(
   const maxMag = max > 0 ? max : 1
 
   for (const { x, z } of CURRENT_ARROW_POSITIONS) {
-    const { lat, lon } = sceneToLatLon(x, z, field.bounds)
+    const { lat, lon } = worldToLatLon(x, z, INDIAN_OCEAN_VIEW_BOUNDS)
     const { u, v, magnitude } = sampleCurrentField(field, lat, lon)
 
     const dir = new THREE.Vector3(u, 0, -v)

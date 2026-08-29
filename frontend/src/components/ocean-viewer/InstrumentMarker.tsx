@@ -1,6 +1,5 @@
 import type { AnalysisMode, SpatialValidationPoint } from '../../types/analysis'
 import type { Instrument, OceanVariable } from '../../types/ocean'
-import { latLonToScenePercent } from '../../utils/geo'
 import { differenceToCss } from '../../utils/analysisColor'
 import { formatVariableValue, getVariableMeta } from '../../data/variableMeta'
 
@@ -40,9 +39,9 @@ export function InstrumentMarker({
 }: InstrumentMarkerProps) {
   if (!visible) return null
 
-  const pos = screenPosition
-    ? { x: screenPosition.x, y: screenPosition.y, visible: screenPosition.visible }
-    : { ...latLonToScenePercent(instrument.latitude, instrument.longitude), visible: true }
+  if (!screenPosition) return null
+
+  const pos = { x: screenPosition.x, y: screenPosition.y, visible: screenPosition.visible }
 
   if (!pos.visible) return null
 
@@ -84,8 +83,8 @@ export function InstrumentMarker({
       type="button"
       className={`instrument-marker ${colorClass} ${selected ? 'instrument-marker--selected' : ''} ${showLegacyErrorRing || showRegionalMarker ? 'instrument-marker--error' : ''} ${showRegionalMarker ? 'instrument-marker--validation' : ''}`}
       style={{
-        left: screenPosition ? `${pos.x}px` : `${pos.x}%`,
-        top: screenPosition ? `${pos.y}px` : `${pos.y}%`,
+        left: `${pos.x}px`,
+        top: `${pos.y}px`,
         ['--error-scale' as string]: errorScale,
         ...(validationColor ? { ['--validation-color' as string]: validationColor } : {}),
       }}

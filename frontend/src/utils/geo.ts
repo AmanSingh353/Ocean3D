@@ -10,6 +10,8 @@ export function latLonToScenePercent(
 
 export {
   INDIAN_OCEAN_VIEW_BOUNDS,
+  latLonToWorld,
+  worldToLatLon,
   latLonToSceneXZ,
   latLonToOverlayPercent,
   projectSceneToScreen,

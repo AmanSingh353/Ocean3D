@@ -4,7 +4,7 @@ import {
   temperatureToColor,
   type TemperatureRange,
 } from './temperatureColor'
-import { sceneXZToLatLon, INDIAN_OCEAN_VIEW_BOUNDS } from './geoProjection'
+import { worldToLatLon, INDIAN_OCEAN_VIEW_BOUNDS } from './geoProjection'
 import { colorGridVertices, isInsideModelBounds, setOceanBaseVertexColor } from './fieldSampling'
 import { getModelGridMeta, paintModelGridFromValues } from './modelGridGeometry'
 import { isOnLand } from './landMask'
@@ -15,7 +15,7 @@ export function sceneToLatLon(
   z: number,
   _bounds?: ApiBounds,
 ): { lat: number; lon: number } {
-  return sceneXZToLatLon(x, z, INDIAN_OCEAN_VIEW_BOUNDS)
+  return worldToLatLon(x, z, INDIAN_OCEAN_VIEW_BOUNDS)
 }
 
 /** Compute min/max from the API grid, ignoring null/NaN values. */

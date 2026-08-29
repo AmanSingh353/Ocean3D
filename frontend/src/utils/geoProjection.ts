@@ -15,8 +15,8 @@ export const OCEAN_BASE_VERTEX_RGB = { r: 0.035, g: 0.078, b: 0.11 } as const
 /** Shared Y plane for geographic map layers (land, coastlines, graticule). */
 export const GEO_REFERENCE_Y = 0
 
-/** Model scalar field surface (same geographic plane as coastlines). */
-export const GEO_MODEL_SURFACE_Y = GEO_REFERENCE_Y + 0.03
+/** Model scalar field surface — slightly above land fill to prevent z-fighting. */
+export const GEO_MODEL_SURFACE_Y = GEO_REFERENCE_Y + 0.05
 
 /** Observation marker height above the geographic reference plane. */
 export const GEO_MARKER_Y = GEO_REFERENCE_Y + 0.35
@@ -32,27 +32,35 @@ export const GEO_SCENE_DEPTH =
 
 export type GeoBounds = Pick<ApiBounds, 'lat_min' | 'lat_max' | 'lon_min' | 'lon_max'>
 
-export function isInsideGeoBounds(
-  lat: number,
-  lon: number,
-  bounds: GeoBounds,
-): boolean {
-  return (
-    lat >= bounds.lat_min &&
-    lat <= bounds.lat_max &&
-    lon >= bounds.lon_min &&
-    lon <= bounds.lon_max
-  )
+export interface WorldPosition {
+  x: number
+  y: number
+  z: number
 }
 
-/** Map latitude/longitude to Three.js X/Z using equirectangular projection. */
-export function latLonToSceneXZ(
+export interface SceneXZ {
+  x: number
+  z: number
+}
+
+/**
+ * Canonical geographic coordinate system for Ocean3D.
+ *
+ * Projection: equirectangular normalization within `bounds`, mapped to Three.js XZ.
+ * - +X = east (longitude increases)
+ * - +Z = south (latitude decreases; north = −Z)
+ * - +Y = elevation above the reference plane
+ *
+ * Grid/data ordering: latitude arrays ascend south→north; longitude arrays ascend west→east.
+ * No scene rotation, mirroring, or scale compensation is applied to geographic layers.
+ */
+export function projectLatLonToXZ(
   lat: number,
   lon: number,
   bounds: GeoBounds = INDIAN_OCEAN_VIEW_BOUNDS,
   sceneWidth = GEO_SCENE_WIDTH,
   sceneDepth = GEO_SCENE_DEPTH,
-): { x: number; z: number } {
+): SceneXZ {
   const lonSpan = bounds.lon_max - bounds.lon_min
   const latSpan = bounds.lat_max - bounds.lat_min
   const lonT = lonSpan > 0 ? (lon - bounds.lon_min) / lonSpan : 0.5
@@ -63,19 +71,30 @@ export function latLonToSceneXZ(
   }
 }
 
-/** Map latitude/longitude to a full scene position on the geographic reference plane. */
-export function latLonToSceneXYZ(
+/** Map latitude/longitude to Three.js world coordinates (canonical transform). */
+export function latLonToWorld(
   lat: number,
   lon: number,
   y: number = GEO_REFERENCE_Y,
   bounds: GeoBounds = INDIAN_OCEAN_VIEW_BOUNDS,
-): { x: number; y: number; z: number } {
-  const { x, z } = latLonToSceneXZ(lat, lon, bounds)
+): WorldPosition {
+  const { x, z } = projectLatLonToXZ(lat, lon, bounds)
   return { x, y, z }
 }
 
-/** Inverse projection: scene X/Z → latitude/longitude. */
-export function sceneXZToLatLon(
+/** Map latitude/longitude to Three.js world coordinates as a Vector3. */
+export function latLonToWorldVector3(
+  lat: number,
+  lon: number,
+  y: number = GEO_REFERENCE_Y,
+  bounds: GeoBounds = INDIAN_OCEAN_VIEW_BOUNDS,
+): THREE.Vector3 {
+  const { x, z } = projectLatLonToXZ(lat, lon, bounds)
+  return new THREE.Vector3(x, y, z)
+}
+
+/** Inverse of latLonToWorld for the horizontal plane (ignores Y). */
+export function worldToLatLon(
   x: number,
   z: number,
   bounds: GeoBounds = INDIAN_OCEAN_VIEW_BOUNDS,
@@ -90,6 +109,51 @@ export function sceneXZToLatLon(
     lon: bounds.lon_min + lonT * lonSpan,
     lat: bounds.lat_max - latT * latSpan,
   }
+}
+
+export function isInsideGeoBounds(
+  lat: number,
+  lon: number,
+  bounds: GeoBounds,
+): boolean {
+  return (
+    lat >= bounds.lat_min &&
+    lat <= bounds.lat_max &&
+    lon >= bounds.lon_min &&
+    lon <= bounds.lon_max
+  )
+}
+
+/** @deprecated Use latLonToWorld — retained for call-site compatibility. */
+export function latLonToSceneXZ(
+  lat: number,
+  lon: number,
+  bounds: GeoBounds = INDIAN_OCEAN_VIEW_BOUNDS,
+  sceneWidth = GEO_SCENE_WIDTH,
+  sceneDepth = GEO_SCENE_DEPTH,
+): SceneXZ {
+  return projectLatLonToXZ(lat, lon, bounds, sceneWidth, sceneDepth)
+}
+
+/** @deprecated Use latLonToWorld — retained for call-site compatibility. */
+export function latLonToSceneXYZ(
+  lat: number,
+  lon: number,
+  y: number = GEO_REFERENCE_Y,
+  bounds: GeoBounds = INDIAN_OCEAN_VIEW_BOUNDS,
+): WorldPosition {
+  return latLonToWorld(lat, lon, y, bounds)
+}
+
+/** @deprecated Use worldToLatLon — retained for call-site compatibility. */
+export function sceneXZToLatLon(
+  x: number,
+  z: number,
+  bounds: GeoBounds = INDIAN_OCEAN_VIEW_BOUNDS,
+  sceneWidth = GEO_SCENE_WIDTH,
+  sceneDepth = GEO_SCENE_DEPTH,
+): { lat: number; lon: number } {
+  return worldToLatLon(x, z, bounds, sceneWidth, sceneDepth)
 }
 
 /** Project a scene point to screen pixel coordinates within the canvas host. */
@@ -129,8 +193,8 @@ export function boundsSceneSize(
   bounds: GeoBounds,
   viewBounds: GeoBounds = INDIAN_OCEAN_VIEW_BOUNDS,
 ): { width: number; depth: number; centerX: number; centerZ: number } {
-  const sw = latLonToSceneXZ(bounds.lat_min, bounds.lon_min, viewBounds)
-  const ne = latLonToSceneXZ(bounds.lat_max, bounds.lon_max, viewBounds)
+  const sw = latLonToWorld(bounds.lat_min, bounds.lon_min, GEO_REFERENCE_Y, viewBounds)
+  const ne = latLonToWorld(bounds.lat_max, bounds.lon_max, GEO_REFERENCE_Y, viewBounds)
   return {
     width: Math.abs(ne.x - sw.x),
     depth: Math.abs(ne.z - sw.z),

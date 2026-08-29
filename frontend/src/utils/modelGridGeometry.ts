@@ -3,7 +3,7 @@ import type { ApiGrid } from '../types/api'
 import {
   GEO_MODEL_SURFACE_Y,
   INDIAN_OCEAN_VIEW_BOUNDS,
-  latLonToSceneXYZ,
+  latLonToWorld,
   OCEAN_BASE_VERTEX_RGB,
   type GeoBounds,
 } from './geoProjection'
@@ -50,7 +50,7 @@ export function createModelGridGeometry(
       ]
 
       for (const { lat, lon } of corners) {
-        const { x, y, z } = latLonToSceneXYZ(lat, lon, surfaceY, viewBounds)
+        const { x, y, z } = latLonToWorld(lat, lon, surfaceY, viewBounds)
         positions.push(x, y, z)
         colors.push(OCEAN_BASE_VERTEX_RGB.r, OCEAN_BASE_VERTEX_RGB.g, OCEAN_BASE_VERTEX_RGB.b)
         geoLats.push(lat)
@@ -68,7 +68,7 @@ export function createModelGridGeometry(
 
   const indices: number[] = []
   for (let v = 0; v < positions.length / 3; v += 4) {
-    indices.push(v, v + 2, v + 1, v + 1, v + 2, v + 3)
+    indices.push(v, v + 1, v + 2, v + 1, v + 3, v + 2)
   }
 
   const geometry = new THREE.BufferGeometry()
@@ -84,6 +84,7 @@ export function createModelGridGeometry(
     cellVertexRanges,
   } satisfies ModelGridGeometryMeta
   geometry.computeVertexNormals()
+  geometry.computeBoundingSphere()
   return geometry
 }
 

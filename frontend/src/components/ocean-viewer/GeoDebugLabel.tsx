@@ -10,6 +10,7 @@ interface GeoDebugLabelProps {
   camera: THREE.Camera | null
   hostWidth: number
   hostHeight: number
+  label?: string
 }
 
 /** Temporary debug label projected from geographic scene coordinates. */
@@ -22,6 +23,7 @@ export function GeoDebugLabel({
   camera,
   hostWidth,
   hostHeight,
+  label,
 }: GeoDebugLabelProps) {
   if (!camera || hostWidth <= 0 || hostHeight <= 0) return null
 
@@ -36,7 +38,7 @@ export function GeoDebugLabel({
         top: `${screen.y - 28}px`,
       }}
     >
-      {lat.toFixed(1)}°N · {lon.toFixed(1)}°E
+      {label ?? `${lat.toFixed(1)}°N · ${lon.toFixed(1)}°E`}
     </div>
   )
 }
