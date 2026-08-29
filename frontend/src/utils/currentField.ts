@@ -1,5 +1,11 @@
 import * as THREE from 'three'
 import type { ApiCurrentField } from '../types/api'
+import { getVariableDemoRange } from '../data/variables'
+import { currentToColor } from './currentColor'
+import { sceneToLatLon } from './temperatureField'
+import { colorGridVertices, isInsideModelBounds, setOceanBaseVertexColor } from './fieldSampling'
+import { getModelGridMeta, paintModelGridFromValues } from './modelGridGeometry'
+import { isOnLand } from './landMask'
 import { DEFAULT_REGION } from '../data/defaults'
 import { latLonToWorld, worldToLatLon, GEO_MODEL_SURFACE_Y, INDIAN_OCEAN_VIEW_BOUNDS } from './geoProjection'
 
@@ -69,12 +75,55 @@ export function getCurrentMagnitudeRange(field: ApiCurrentField): {
     }
   }
   if (!Number.isFinite(min) || !Number.isFinite(max)) {
-    return { min: 0, max: 1.5 }
+    return getVariableDemoRange('current')
   }
   if (min === max) {
     return { min: 0, max: max + 0.1 }
   }
-  return { min, max }
+  return getVariableDemoRange('current')
+}
+
+/** Apply API current speed (magnitude) colors to model grid geometry. */
+export function applyCurrentMagnitudeFieldToGeometry(
+  geometry: THREE.BufferGeometry,
+  field: ApiCurrentField,
+  range: { min: number; max: number },
+): void {
+  const positions = geometry.attributes.position
+  const colors = geometry.attributes.color as THREE.BufferAttribute
+  const meta = getModelGridMeta(geometry)
+
+  if (meta?.cellVertexRanges) {
+    paintModelGridFromValues(geometry, field.magnitude, (speed) => {
+      const c = currentToColor(speed, range.min, range.max)
+      return { r: c.r, g: c.g, b: c.b }
+    })
+    return
+  }
+
+  if (meta) {
+    colorGridVertices(colors, meta.grid, (j, i) => {
+      const speed = field.magnitude[j][i]
+      const c = currentToColor(speed, range.min, range.max)
+      return { r: c.r, g: c.g, b: c.b }
+    })
+    colors.needsUpdate = true
+    return
+  }
+
+  for (let i = 0; i < positions.count; i++) {
+    const x = positions.getX(i)
+    const z = positions.getZ(i)
+    const { lat, lon } = sceneToLatLon(x, z, field.bounds)
+    if (isOnLand(lat, lon) || !isInsideModelBounds(lat, lon, field.bounds)) {
+      setOceanBaseVertexColor(colors, i)
+      continue
+    }
+    const { magnitude } = sampleCurrentField(field, lat, lon)
+    const c = currentToColor(magnitude, range.min, range.max)
+    colors.setXYZ(i, c.r, c.g, c.b)
+  }
+  colors.needsUpdate = true
 }
 
 /** Arrow grid positions within the model data domain (geographic). */

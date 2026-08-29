@@ -7,6 +7,7 @@ import { getVariableMeta } from '../../data/variableMeta'
 import { formatDisplayDate } from '../../utils/dateFormat'
 import {
   applyCurrentFieldToGroup,
+  applyCurrentMagnitudeFieldToGeometry,
   getCurrentMagnitudeRange,
 } from '../../utils/currentField'
 import {
@@ -29,7 +30,7 @@ import { SalinityColorbar } from './SalinityColorbar'
 import { TemperatureColorbar } from './TemperatureColorbar'
 import { VisualizationToolbar, type ViewMode } from './VisualizationToolbar'
 import type { AnalysisMode, SpatialAnalysisSnapshot } from '../../types/analysis'
-import { applySpatialAnalysisToGeometry, applyNeutralOceanGeometry } from '../../utils/spatialAnalysisField'
+import { applySpatialAnalysisToGeometry } from '../../utils/spatialAnalysisField'
 import { usesSpatialMeshOverlay } from '../../utils/spatialValidation'
 import { defaultModelGrid, DEFAULT_REGION } from '../../data/defaults'
 import { INDIAN_OCEAN_COASTLINE, INDIAN_OCEAN_LAND } from '../../data/indianOceanMap'
@@ -45,7 +46,6 @@ import {
   gridsEqual,
 } from '../../utils/modelGridGeometry'
 import { createModelFieldMaterial, setModelFieldOpacity } from '../../utils/modelFieldMaterial'
-import { createGeoDebugGuideGeometry } from '../../utils/geoDebugGuide'
 import {
   buildGeoValidationDebugPoints,
   buildGeoValidationSummary,
@@ -114,14 +114,6 @@ interface MarkerScreenPosition {
   visible: boolean
 }
 
-/** ARGO-014 verification coordinates (backend source of truth). */
-const ARGO_014_LAT = 15.8
-const ARGO_014_LON = 76.1
-
-/** ARGO-021 verification coordinates (backend source of truth). */
-const ARGO_021_LAT = 9.8
-const ARGO_021_LON = 70.4
-
 const GEO_DEBUG = isGeoDebugEnabled()
 
 export function OceanViewer({
@@ -176,9 +168,8 @@ export function OceanViewer({
     controls: OrbitControls
     geoGroup: THREE.Group
     oceanMesh: THREE.Mesh
-    geoDebugGuide: THREE.LineSegments
-    geoDebugOutline: THREE.LineSegments
-    geoDebugMarkers: THREE.LineSegments
+    geoDebugOutline: THREE.LineSegments | null
+    geoDebugMarkers: THREE.LineSegments | null
     currents: THREE.Group
   } | null>(null)
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 })
@@ -279,7 +270,7 @@ export function OceanViewer({
     if (!refs) return
 
     const baseOpacity = modelLayerEnabled ? modelOpacity / 100 : 0
-    const effectiveOpacity = isCurrentMode ? baseOpacity * 0.2 : baseOpacity
+    const effectiveOpacity = baseOpacity
 
     const mat = refs.oceanMesh.material as THREE.ShaderMaterial
     setModelFieldOpacity(mat, effectiveOpacity)
@@ -293,7 +284,6 @@ export function OceanViewer({
     refs.currents.scale.set(1, 1, 1)
   }, [
     modelLayerEnabled, modelOpacity, showCurrents,
-    isCurrentMode,
   ])
 
   const activeModelGrid = useMemo(() => {
@@ -313,7 +303,7 @@ export function OceanViewer({
     currentField,
   ])
 
-  // Keep model mesh aligned to API lat/lon grid nodes
+  // Keep model mesh aligned to API lat/lon grid nodes; re-paint after geometry rebuild.
   useEffect(() => {
     const refs = sceneRef.current
     if (!refs) return
@@ -322,6 +312,27 @@ export function OceanViewer({
     refs.oceanMesh.geometry.dispose()
     refs.oceanMesh.geometry = createModelGridGeometry(activeModelGrid)
     refs.oceanMesh.geometry.computeBoundingSphere()
+
+    const temp = temperatureFieldRef.current
+    if (temp) {
+      applyTemperatureFieldToGeometry(refs.oceanMesh.geometry, temp, getTemperatureRange(temp))
+    }
+    const sal = salinityFieldRef.current
+    if (sal) {
+      applySalinityFieldToGeometry(refs.oceanMesh.geometry, sal, getSalinityRange(sal))
+    }
+    const chl = chlorophyllFieldRef.current
+    if (chl) {
+      applyChlorophyllFieldToGeometry(refs.oceanMesh.geometry, chl, getChlorophyllRange(chl))
+    }
+    const cur = currentFieldRef.current
+    if (cur) {
+      applyCurrentMagnitudeFieldToGeometry(
+        refs.oceanMesh.geometry,
+        cur,
+        getCurrentMagnitudeRange(cur),
+      )
+    }
   }, [activeModelGrid])
 
   // Update vertex colors when the API temperature field changes — not in the render loop
@@ -402,10 +413,10 @@ export function OceanViewer({
     )
   }, [chlorophyllField, chlorophyllRange, isChlorophyllMode, meshOverlayReady, spatialAnalysis, meshOverlayMode, meshLegend, activeModelGrid])
 
-  // Current variable: apply spatial analysis overlay at platform locations
+  // Update vertex colors when the API current field changes
   useEffect(() => {
     const refs = sceneRef.current
-    if (!refs || !currentField || !isCurrentMode) return
+    if (!refs || !currentField || !currentMagnitudeRange || !isCurrentMode) return
     if (meshOverlayReady) {
       applySpatialAnalysisToGeometry({
         geometry: refs.oceanMesh.geometry,
@@ -421,8 +432,12 @@ export function OceanViewer({
       })
       return
     }
-    applyNeutralOceanGeometry(refs.oceanMesh.geometry)
-  }, [currentField, isCurrentMode, meshOverlayReady, spatialAnalysis, meshOverlayMode, meshLegend, activeModelGrid])
+    applyCurrentMagnitudeFieldToGeometry(
+      refs.oceanMesh.geometry,
+      currentField,
+      currentMagnitudeRange,
+    )
+  }, [currentField, currentMagnitudeRange, isCurrentMode, meshOverlayReady, spatialAnalysis, meshOverlayMode, meshLegend, activeModelGrid])
 
   // Update current vector arrows when API current field changes
   useEffect(() => {
@@ -536,56 +551,44 @@ export function OceanViewer({
     oceanMesh.frustumCulled = false
     geoGroup.add(oceanMesh)
 
-    const geoDebugGuide = new THREE.LineSegments(
-      createGeoDebugGuideGeometry(ARGO_014_LAT, ARGO_014_LON),
-      new THREE.LineBasicMaterial({
-        color: 0xffcc66,
-        transparent: true,
-        opacity: 0.9,
-      }),
-    )
-    geoDebugGuide.visible = false
-    geoDebugGuide.renderOrder = GEO_RENDER_ORDER.geoDebug
-    geoGroup.add(geoDebugGuide)
+    let geoDebugOutline: THREE.LineSegments | null = null
+    let geoDebugMarkers: THREE.LineSegments | null = null
+    if (GEO_DEBUG) {
+      geoDebugOutline = new THREE.LineSegments(
+        createBoundsOutlineGeometry(DEFAULT_REGION),
+        new THREE.LineBasicMaterial({
+          color: 0xff8844,
+          transparent: true,
+          opacity: 0.85,
+          depthWrite: false,
+        }),
+      )
+      geoDebugOutline.renderOrder = GEO_RENDER_ORDER.geoDebug
+      geoGroup.add(geoDebugOutline)
 
-    const geoDebugOutline = new THREE.LineSegments(
-      createBoundsOutlineGeometry(DEFAULT_REGION),
-      new THREE.LineBasicMaterial({
-        color: 0xff8844,
-        transparent: true,
-        opacity: 0.85,
-        depthWrite: false,
-      }),
-    )
-    geoDebugOutline.visible = GEO_DEBUG
-    geoDebugOutline.renderOrder = GEO_RENDER_ORDER.geoDebug
-    geoGroup.add(geoDebugOutline)
-
-    const geoDebugReferencePoints = buildGeoValidationDebugPoints(
-      DEFAULT_REGION,
-      defaultModelGrid(),
-      [
-        { lat: ARGO_014_LAT, lon: ARGO_014_LON, label: 'ARGO-014' },
-        { lat: ARGO_021_LAT, lon: ARGO_021_LON, label: 'ARGO-021' },
-      ],
-    )
-    const geoDebugMarkers = new THREE.LineSegments(
-      createGeoReferenceMarkersGeometry(geoDebugReferencePoints),
-      new THREE.LineBasicMaterial({
-        color: 0x66ffaa,
-        transparent: true,
-        opacity: 0.9,
-      }),
-    )
-    geoDebugMarkers.visible = GEO_DEBUG
-    geoDebugMarkers.renderOrder = GEO_RENDER_ORDER.geoDebug
-    geoGroup.add(geoDebugMarkers)
+      const geoDebugReferencePoints = buildGeoValidationDebugPoints(
+        DEFAULT_REGION,
+        defaultModelGrid(),
+        [],
+      )
+      geoDebugMarkers = new THREE.LineSegments(
+        createGeoReferenceMarkersGeometry(geoDebugReferencePoints),
+        new THREE.LineBasicMaterial({
+          color: 0x66ffaa,
+          transparent: true,
+          opacity: 0.9,
+          depthWrite: false,
+        }),
+      )
+      geoDebugMarkers.renderOrder = GEO_RENDER_ORDER.geoDebug
+      geoGroup.add(geoDebugMarkers)
+    }
 
     const currents = new THREE.Group()
     currents.renderOrder = GEO_RENDER_ORDER.currents
     geoGroup.add(currents)
 
-    sceneRef.current = { camera, renderer, controls, geoGroup, oceanMesh, geoDebugGuide, geoDebugOutline, geoDebugMarkers, currents }
+    sceneRef.current = { camera, renderer, controls, geoGroup, oceanMesh, geoDebugOutline, geoDebugMarkers, currents }
 
     const pendingField = temperatureFieldRef.current
     if (pendingField) {
@@ -662,8 +665,6 @@ export function OceanViewer({
 
   useEffect(() => { updateOceanAppearance() }, [updateOceanAppearance])
 
-  const showGeoDebug = GEO_DEBUG || selectedInstrumentId?.toUpperCase() === 'ARGO-014'
-
   const activeModelBounds = useMemo(() => {
     const field =
       temperatureField ?? salinityField ?? chlorophyllField ?? currentField ?? null
@@ -676,49 +677,36 @@ export function OceanViewer({
     activeModelGrid,
   ])
 
-  const instrumentDebugPoints = useMemo(
-    (): GeoDebugPoint[] =>
-      instruments.map((inst) => ({
-        lat: inst.latitude,
-        lon: inst.longitude,
-        label: `${inst.id} ${inst.latitude.toFixed(1)}°N ${inst.longitude.toFixed(1)}°E`,
-      })),
-    [instruments],
-  )
+  const instrumentDebugPoints = useMemo((): GeoDebugPoint[] => {
+    if (!GEO_DEBUG) return []
+    return instruments.map((inst) => ({
+      lat: inst.latitude,
+      lon: inst.longitude,
+      label: `${inst.id} ${inst.latitude.toFixed(1)}°N ${inst.longitude.toFixed(1)}°E`,
+    }))
+  }, [instruments])
 
-  const geoDebugLabels = useMemo(
-    () => buildGeoValidationDebugPoints(activeModelBounds, activeModelGrid, instrumentDebugPoints),
-    [activeModelBounds, activeModelGrid, instrumentDebugPoints],
-  )
+  const geoDebugLabels = useMemo(() => {
+    if (!GEO_DEBUG) return [] as GeoDebugPoint[]
+    return buildGeoValidationDebugPoints(activeModelBounds, activeModelGrid, instrumentDebugPoints)
+  }, [activeModelBounds, activeModelGrid, instrumentDebugPoints])
 
-  const geoValidationSummary = useMemo(
-    () => buildGeoValidationSummary(activeModelBounds, activeModelGrid, apiModelDepth, selectedDepth),
-    [activeModelBounds, activeModelGrid, apiModelDepth, selectedDepth],
-  )
-
-  useEffect(() => {
-    const refs = sceneRef.current
-    if (!refs) return
-    refs.geoDebugGuide.visible = selectedInstrumentId?.toUpperCase() === 'ARGO-014'
-    refs.geoDebugOutline.visible = GEO_DEBUG
-    refs.geoDebugMarkers.visible = GEO_DEBUG
-  }, [showGeoDebug, selectedInstrumentId])
+  const geoValidationSummary = useMemo(() => {
+    if (!GEO_DEBUG) return ''
+    return buildGeoValidationSummary(activeModelBounds, activeModelGrid, apiModelDepth, selectedDepth)
+  }, [activeModelBounds, activeModelGrid, apiModelDepth, selectedDepth])
 
   useEffect(() => {
+    if (!GEO_DEBUG) return
     const refs = sceneRef.current
-    if (!refs || !GEO_DEBUG) return
+    if (!refs?.geoDebugOutline || !refs.geoDebugMarkers) return
 
     refs.geoDebugOutline.geometry.dispose()
     refs.geoDebugOutline.geometry = createBoundsOutlineGeometry(activeModelBounds)
 
     refs.geoDebugMarkers.geometry.dispose()
     refs.geoDebugMarkers.geometry = createGeoReferenceMarkersGeometry(geoDebugLabels)
-  }, [GEO_DEBUG, activeModelBounds, geoDebugLabels])
-
-  const argo014ScenePos = useMemo(
-    () => latLonToWorld(ARGO_014_LAT, ARGO_014_LON, GEO_MARKER_Y, INDIAN_OCEAN_VIEW_BOUNDS),
-    [],
-  )
+  }, [activeModelBounds, geoDebugLabels])
 
   useEffect(() => {
     const refs = sceneRef.current
@@ -807,8 +795,10 @@ export function OceanViewer({
       <div className="ocean-viewer__overlay ocean-viewer__overlay--label">
         <div className="view-label">
           <span className="view-label__region">{regionLabel}</span>
-          <span className="view-label__detail">{variableLabel} · {selectedDepth} m</span>
-          {selectedVariable === 'temperature' && selectedDepth !== apiModelDepth ? (
+          <span className="view-label__detail">
+            {variableLabel} ({variableMeta.unit}) · {selectedDepth} m
+          </span>
+          {selectedDepth !== apiModelDepth ? (
             <span className="view-label__detail view-label__detail--hint">
               Model slice: {apiModelDepth} m
             </span>
@@ -845,12 +835,12 @@ export function OceanViewer({
           />
         </div>
       )}
-      {showScalarColorbar && isCurrentMode && (
+      {showScalarColorbar && isCurrentMode && currentMagnitudeRange && modelLayerEnabled && (
         <div className="ocean-viewer__overlay ocean-viewer__overlay--colorbar">
           <CurrentColorbar
             unit="m/s"
-            minSpeed={currentMagnitudeRange?.min}
-            maxSpeed={currentMagnitudeRange?.max}
+            minSpeed={currentMagnitudeRange.min}
+            maxSpeed={currentMagnitudeRange.max}
           />
         </div>
       )}
@@ -882,19 +872,6 @@ export function OceanViewer({
         <div className="geo-debug-panel">{geoValidationSummary}</div>
       ) : null}
       <div className="ocean-viewer__markers">
-        {showGeoDebug && selectedInstrumentId?.toUpperCase() === 'ARGO-014' ? (
-          <GeoDebugLabel
-            lat={ARGO_014_LAT}
-            lon={ARGO_014_LON}
-            label="ARGO-014"
-            sceneX={argo014ScenePos.x}
-            sceneY={argo014ScenePos.y}
-            sceneZ={argo014ScenePos.z}
-            camera={sceneRef.current?.camera ?? null}
-            hostWidth={canvasSize.width}
-            hostHeight={canvasSize.height}
-          />
-        ) : null}
         {GEO_DEBUG
           ? geoDebugLabels.map((point) => {
               const y = point.y ?? GEO_MARKER_Y

@@ -30,7 +30,7 @@ export function CurrentColorbar({
   return (
     <div className="temp-colorbar">
       <span className="temp-colorbar__title">
-        Current <span className="temp-colorbar__unit">{unit}</span>
+        Current Speed <span className="temp-colorbar__unit">{unit}</span>
       </span>
       <div className="temp-colorbar__body">
         <div className="temp-colorbar__labels">

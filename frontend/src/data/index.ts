@@ -1,0 +1,34 @@
+export {
+  OCEAN_DEPTHS,
+  snapToNearestModelDepth,
+  oceanDepthTicks,
+  type OceanDepth,
+} from './depths'
+export {
+  OCEAN_TIMESTAMPS,
+  DEFAULT_OCEAN_DATE,
+  type OceanTimestamp,
+} from './timestamps'
+export {
+  VARIABLE_DEMO_RANGES,
+  getVariableDemoRange,
+  resolveFieldDisplayRange,
+} from './variables'
+export {
+  OCEAN_MODEL_REGION,
+  OCEAN_MODEL_CONFIG,
+  defaultOceanModelGrid,
+} from './oceanModelData'
+export {
+  OBSERVATION_PLATFORMS,
+  type ObservationPlatformRef,
+} from './observationData'
+export {
+  VARIABLE_META,
+  VARIABLE_OPTIONS,
+  getVariableMeta,
+  formatVariableValue,
+  formatVariableTick,
+  formatComparisonMetric,
+  type VariableMeta,
+} from './variableMeta'

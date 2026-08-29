@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import type { ApiSalinityField } from '../types/api'
+import { getVariableDemoRange } from '../data/variables'
 import { salinityToColor, type SalinityRange } from './salinityColor'
 import { sceneToLatLon } from './temperatureField'
 import { colorGridVertices, isInsideModelBounds, setOceanBaseVertexColor } from './fieldSampling'
@@ -20,14 +21,16 @@ export function getSalinityRange(field: ApiSalinityField): SalinityRange {
   }
 
   if (!Number.isFinite(min) || !Number.isFinite(max)) {
-    return { min: 30, max: 37 }
+    return getVariableDemoRange('salinity')
   }
 
   if (min === max) {
-    return { min: min - 0.2, max: max + 0.2 }
+    const demo = getVariableDemoRange('salinity')
+    const pad = (demo.max - demo.min) * 0.05
+    return { min: min - pad, max: max + pad }
   }
 
-  return { min, max }
+  return getVariableDemoRange('salinity')
 }
 
 /** Bilinear sample of the API salinity grid at a lat/lon point. */

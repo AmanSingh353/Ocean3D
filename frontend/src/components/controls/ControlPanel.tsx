@@ -54,7 +54,6 @@ export function ControlPanel(props: ControlPanelProps) {
       <DepthControl
         depth={props.selectedDepth}
         apiModelDepth={props.apiModelDepth}
-        selectedVariable={props.selectedVariable}
         availableDepths={props.availableDepths}
         depthTicks={props.depthTicks}
         onChange={props.onDepthChange}

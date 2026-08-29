@@ -1,5 +1,12 @@
 import * as THREE from 'three'
 
+/**
+ * Geospatial model field material.
+ * - DoubleSide: visible when orbiting above/below the horizontal slice
+ * - Per-vertex cellAlpha: land/invalid cells discarded (transparent)
+ * - depthWrite false + renderOrder: stable transparency vs basemap layers
+ * - polygonOffset: reduces z-fighting with land fill / coastline
+ */
 /** Buffer attribute name for per-vertex field visibility (0 = transparent, 1 = visible). */
 export const CELL_ALPHA_ATTR = 'cellAlpha'
 

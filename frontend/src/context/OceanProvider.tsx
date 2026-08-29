@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import { DEFAULT_DATES, DEFAULT_DEPTHS } from '../data/defaults'
+import { getVariableDemoRange } from '../data/variables'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import {
   formatObservationTime,
@@ -95,8 +96,8 @@ export function OceanProvider({ children }: OceanProviderProps) {
   const [instrumentsError, setInstrumentsError] = useState<string | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
 
-  const [colorScaleMin, setColorScaleMin] = useState(8)
-  const [colorScaleMax, setColorScaleMax] = useState(31)
+  const [colorScaleMin, setColorScaleMin] = useState(getVariableDemoRange('temperature').min)
+  const [colorScaleMax, setColorScaleMax] = useState(getVariableDemoRange('temperature').max)
   const [refreshToken, setRefreshToken] = useState(0)
 
   const selectedDepthRef = useRef(selectedDepth)
@@ -561,12 +562,12 @@ export function OceanProvider({ children }: OceanProviderProps) {
       colorScaleMin,
       colorScaleMax,
       setColorScale,
-      currentScaleMin: currentMagnitudeRange?.min ?? 0,
-      currentScaleMax: currentMagnitudeRange?.max ?? 1.5,
-      salinityScaleMin: salinityRange?.min ?? 30,
-      salinityScaleMax: salinityRange?.max ?? 37,
-      chlorophyllScaleMin: chlorophyllRange?.min ?? 0.01,
-      chlorophyllScaleMax: chlorophyllRange?.max ?? 1,
+      currentScaleMin: currentMagnitudeRange?.min ?? getVariableDemoRange('current').min,
+      currentScaleMax: currentMagnitudeRange?.max ?? getVariableDemoRange('current').max,
+      salinityScaleMin: salinityRange?.min ?? getVariableDemoRange('salinity').min,
+      salinityScaleMax: salinityRange?.max ?? getVariableDemoRange('salinity').max,
+      chlorophyllScaleMin: chlorophyllRange?.min ?? getVariableDemoRange('chlorophyll').min,
+      chlorophyllScaleMax: chlorophyllRange?.max ?? getVariableDemoRange('chlorophyll').max,
     }),
     [
       availableDates,

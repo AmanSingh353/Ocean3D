@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import type { ApiBounds, ApiTemperatureField } from '../types/api'
+import { getVariableDemoRange } from '../data/variables'
 import {
   temperatureToColor,
   type TemperatureRange,
@@ -32,14 +33,16 @@ export function getTemperatureRange(field: ApiTemperatureField): TemperatureRang
   }
 
   if (!Number.isFinite(min) || !Number.isFinite(max)) {
-    return { min: 0, max: 1 }
+    return getVariableDemoRange('temperature')
   }
 
   if (min === max) {
-    return { min: min - 0.5, max: max + 0.5 }
+    const demo = getVariableDemoRange('temperature')
+    const pad = (demo.max - demo.min) * 0.05
+    return { min: min - pad, max: max + pad }
   }
 
-  return { min, max }
+  return getVariableDemoRange('temperature')
 }
 
 /** Bilinear sample of the API temperature grid at a lat/lon point. */

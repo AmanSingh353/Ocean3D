@@ -38,7 +38,7 @@ export const VARIABLE_META: Record<OceanVariable, VariableMeta> = {
   },
   current: {
     value: 'current',
-    label: 'Current',
+    label: 'Current Speed',
     profileLabel: 'Current Speed',
     unit: 'm/s',
     decimals: 3,

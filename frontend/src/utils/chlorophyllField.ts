@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import type { ApiChlorophyllField } from '../types/api'
+import { getVariableDemoRange } from '../data/variables'
 import { chlorophyllToColor, type ChlorophyllRange } from './chlorophyllColor'
 import { sceneToLatLon } from './temperatureField'
 import { colorGridVertices, isInsideModelBounds, setOceanBaseVertexColor } from './fieldSampling'
@@ -20,14 +21,16 @@ export function getChlorophyllRange(field: ApiChlorophyllField): ChlorophyllRang
   }
 
   if (!Number.isFinite(min) || !Number.isFinite(max)) {
-    return { min: 0.01, max: 1 }
+    return getVariableDemoRange('chlorophyll')
   }
 
   if (min === max) {
-    return { min: Math.max(0, min - 0.05), max: max + 0.05 }
+    const demo = getVariableDemoRange('chlorophyll')
+    const pad = (demo.max - demo.min) * 0.05
+    return { min: Math.max(0, min - pad), max: max + pad }
   }
 
-  return { min, max }
+  return getVariableDemoRange('chlorophyll')
 }
 
 /** Bilinear sample of the API chlorophyll grid at a lat/lon point. */

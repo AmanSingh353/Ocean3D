@@ -1,11 +1,9 @@
 import { Slider } from '../common/Slider'
 import { isDepthSnapped } from '../../utils/depthUtils'
-import type { OceanVariable } from '../../types/ocean'
 
 interface DepthControlProps {
   depth: number
   apiModelDepth: number
-  selectedVariable: OceanVariable
   availableDepths: number[]
   depthTicks: number[]
   onChange: (depth: number) => void
@@ -14,13 +12,12 @@ interface DepthControlProps {
 export function DepthControl({
   depth,
   apiModelDepth,
-  selectedVariable,
   availableDepths,
   depthTicks,
   onChange,
 }: DepthControlProps) {
   const maxDepth = availableDepths.length > 0 ? Math.max(...availableDepths) : 1000
-  const snapped = isDepthSnapped(selectedVariable, depth, apiModelDepth)
+  const snapped = isDepthSnapped(depth, apiModelDepth)
 
   return (
     <div className="control-block">

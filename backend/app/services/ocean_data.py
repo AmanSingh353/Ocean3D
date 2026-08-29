@@ -40,100 +40,91 @@ def _date_index(date: str) -> int:
 
 
 def _compute_temperature(lat: float, lon: float, depth: float, date: str) -> float:
-    """Deterministic smooth temperature field for the Indian Ocean MVP."""
+    """Deterministic smooth temperature field for the Indian Ocean MVP (18–24 °C)."""
     day_index = _date_index(date)
 
-    # Surface baseline: warmer in the south, slight day-to-day drift
-    surface = 29.4 - 0.14 * (lat - LAT_MIN) - 0.06 * day_index
-
-    # Thermocline-driven cooling with depth
+    surface = 23.6 - 0.10 * (lat - LAT_MIN) - 0.08 * day_index
     thermocline = 1.0 / (1.0 + math.exp(-(depth - 120.0) / 38.0))
-    deep = 8.6 + 0.015 * day_index
+    deep = 18.4 + 0.02 * day_index
     base = surface - (surface - deep) * thermocline
 
-    # Smooth spatial gradients
-    lon_var = 0.75 * math.sin((lon - 72.0) * math.pi / 12.0)
-    lat_var = 0.45 * math.cos((lat - 12.0) * math.pi / 8.0)
-
-    # Mesoscale anomaly feature
+    lon_var = 0.45 * math.sin((lon - 72.0) * math.pi / 12.0)
+    lat_var = 0.30 * math.cos((lat - 12.0) * math.pi / 8.0)
     anomaly = (
-        1.15
+        0.55
         * math.sin(lat * 0.65 + lon * 0.48)
         * math.cos(lon * 0.28 - lat * 0.19)
         * (1.0 - depth / 1000.0)
     )
 
     value = base + lon_var + lat_var + anomaly
-    return round(max(8.0, min(31.0, value)), 2)
+    return round(max(18.0, min(24.0, value)), 2)
 
 
 def _compute_current(
     lat: float, lon: float, depth: float, date: str,
 ) -> tuple[float, float, float]:
-    """Deterministic synthetic surface current field for the Indian Ocean MVP."""
+    """Deterministic synthetic current field for the Indian Ocean MVP (0–1.5 m/s)."""
     day_index = _date_index(date)
-    depth_factor = max(0.15, 1.0 - depth / 1200.0)
+    depth_factor = max(0.12, 1.0 - depth / 1200.0)
 
     u = (
-        0.55 * math.sin((lon - 72.0) * math.pi / 12.0 + day_index * 0.12)
-        + 0.35 * math.sin(lat * 0.65 + lon * 0.48)
+        0.42 * math.sin((lon - 72.0) * math.pi / 12.0 + day_index * 0.12)
+        + 0.28 * math.sin(lat * 0.65 + lon * 0.48)
     ) * depth_factor
     v = (
-        0.45 * math.cos((lat - 12.0) * math.pi / 8.0 - depth * 0.002)
-        + 0.28 * math.cos(lon * 0.28 - lat * 0.19)
+        0.34 * math.cos((lat - 12.0) * math.pi / 8.0 - depth * 0.002)
+        + 0.22 * math.cos(lon * 0.28 - lat * 0.19)
     ) * depth_factor
 
     magnitude = math.sqrt(u * u + v * v)
+    scale = min(1.0, 1.35 / magnitude) if magnitude > 1.35 else 1.0
+    u *= scale
+    v *= scale
+    magnitude = min(1.5, magnitude * scale)
     return round(u, 3), round(v, 3), round(magnitude, 3)
 
 
 def _compute_salinity(lat: float, lon: float, depth: float, date: str) -> float:
-    """Deterministic smooth salinity field for the Indian Ocean MVP."""
+    """Deterministic smooth salinity field for the Indian Ocean MVP (33–37 PSU)."""
     day_index = _date_index(date)
 
-    # Surface: higher salinity in Arabian Sea, lower Bay of Bengal influence
-    surface = 35.4 + 0.06 * (lon - 75.0) - 0.04 * (lat - 12.0) - 0.015 * day_index
-
-    # Halocline: fresher surface layer mixing with depth
+    surface = 35.8 + 0.04 * (lon - 75.0) - 0.03 * (lat - 12.0) - 0.012 * day_index
     halocline = 1.0 / (1.0 + math.exp(-(depth - 90.0) / 35.0))
-    deep = 34.7 + 0.008 * day_index
-    base = surface - (surface - deep) * halocline * 0.25
+    deep = 34.2 + 0.006 * day_index
+    base = surface - (surface - deep) * halocline * 0.22
 
-    lon_var = 0.35 * math.sin((lon - 72.0) * math.pi / 10.0)
-    lat_var = 0.22 * math.cos((lat - 10.0) * math.pi / 7.0)
+    lon_var = 0.22 * math.sin((lon - 72.0) * math.pi / 10.0)
+    lat_var = 0.16 * math.cos((lat - 10.0) * math.pi / 7.0)
     anomaly = (
-        0.28
+        0.18
         * math.sin(lat * 0.52 + lon * 0.41)
         * math.cos(lon * 0.31 - lat * 0.17)
         * (1.0 - depth / 1000.0)
     )
 
     value = base + lon_var + lat_var + anomaly
-    return round(max(30.0, min(37.0, value)), 2)
+    return round(max(33.0, min(37.0, value)), 2)
 
 
 def _compute_chlorophyll(lat: float, lon: float, depth: float, date: str) -> float:
-    """Deterministic smooth chlorophyll-a field for the Indian Ocean MVP."""
+    """Deterministic smooth chlorophyll-a field for the Indian Ocean MVP (0–3 mg/m³)."""
     day_index = _date_index(date)
 
-    # Surface bloom baseline with strong depth attenuation (euphotic zone)
-    surface = 1.85 - 0.04 * (lat - LAT_MIN) + 0.025 * day_index
+    surface = 1.45 - 0.03 * (lat - LAT_MIN) + 0.018 * day_index
     depth_decay = math.exp(-depth / 85.0)
     base = surface * depth_decay
 
-    # Coastal/upwelling enhancement along western boundary
-    coastal = 0.55 * math.exp(-((lon - 68.0) ** 2) / 18.0) * depth_decay
-
-    # Mesoscale patchiness
+    coastal = 0.42 * math.exp(-((lon - 68.0) ** 2) / 18.0) * depth_decay
     patch = (
-        0.42
+        0.32
         * math.sin(lat * 0.58 + lon * 0.43 + day_index * 0.15)
         * math.cos(lon * 0.33 - lat * 0.21)
         * depth_decay
     )
 
     value = base + coastal + patch
-    return round(max(0.01, min(4.5, value)), 3)
+    return round(max(0.0, min(3.0, value)), 3)
 
 
 class OceanDataService:
