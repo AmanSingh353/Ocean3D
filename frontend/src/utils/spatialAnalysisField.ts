@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import type { AnalysisMode, SpatialValidationPoint } from '../types/analysis'
-import type { ApiBounds, ApiChlorophyllField, ApiSalinityField, ApiTemperatureField } from '../types/api'
+import type { ApiBounds, ApiChlorophyllField, ApiCurrentField, ApiSalinityField, ApiTemperatureField } from '../types/api'
 import type { OceanVariable } from '../types/ocean'
 import {
   absoluteErrorToColor,
@@ -10,6 +10,7 @@ import {
 import { chlorophyllToColor } from './chlorophyllColor'
 import { getChlorophyllRange, sampleChlorophyllField } from './chlorophyllField'
 import { currentToColor } from './currentColor'
+import { getCurrentMagnitudeRange, sampleCurrentField } from './currentField'
 import { getSalinityRange, sampleSalinityField } from './salinityField'
 import { salinityToColor } from './salinityColor'
 import { getTemperatureRange, sampleTemperatureField, sceneToLatLon } from './temperatureField'
@@ -50,6 +51,7 @@ function sampleModelAtLatLon(
   temperatureField: ApiTemperatureField | null,
   salinityField: ApiSalinityField | null,
   chlorophyllField: ApiChlorophyllField | null,
+  currentField: ApiCurrentField | null,
 ): number | null {
   switch (variable) {
     case 'temperature':
@@ -58,8 +60,8 @@ function sampleModelAtLatLon(
       return salinityField ? sampleSalinityField(salinityField, lat, lon) : null
     case 'chlorophyll':
       return chlorophyllField ? sampleChlorophyllField(chlorophyllField, lat, lon) : null
-    default:
-      return null
+    case 'current':
+      return currentField ? sampleCurrentField(currentField, lat, lon).magnitude : null
   }
 }
 
@@ -68,6 +70,7 @@ function getModelRange(
   temperatureField: ApiTemperatureField | null,
   salinityField: ApiSalinityField | null,
   chlorophyllField: ApiChlorophyllField | null,
+  currentField: ApiCurrentField | null,
 ): { min: number; max: number } | null {
   switch (variable) {
     case 'temperature':
@@ -76,8 +79,8 @@ function getModelRange(
       return salinityField ? getSalinityRange(salinityField) : null
     case 'chlorophyll':
       return chlorophyllField ? getChlorophyllRange(chlorophyllField) : null
-    default:
-      return null
+    case 'current':
+      return currentField ? getCurrentMagnitudeRange(currentField) : null
   }
 }
 
@@ -92,6 +95,7 @@ export interface SpatialAnalysisFieldInput {
   temperatureField: ApiTemperatureField | null
   salinityField: ApiSalinityField | null
   chlorophyllField: ApiChlorophyllField | null
+  currentField: ApiCurrentField | null
 }
 
 /** Paint ocean mesh for spatial analysis modes (non-model). */
@@ -107,6 +111,7 @@ export function applySpatialAnalysisToGeometry(input: SpatialAnalysisFieldInput)
     temperatureField,
     salinityField,
     chlorophyllField,
+    currentField,
   } = input
 
   const positions = geometry.attributes.position
@@ -114,7 +119,13 @@ export function applySpatialAnalysisToGeometry(input: SpatialAnalysisFieldInput)
   const alphas = getCellAlphaAttribute(geometry)
   const geoLat = geometry.getAttribute('geoLat') as THREE.BufferAttribute | undefined
   const geoLon = geometry.getAttribute('geoLon') as THREE.BufferAttribute | undefined
-  const modelRange = getModelRange(variable, temperatureField, salinityField, chlorophyllField)
+  const modelRange = getModelRange(
+    variable,
+    temperatureField,
+    salinityField,
+    chlorophyllField,
+    currentField,
+  )
   const meta = getModelGridMeta(geometry)
 
   const hideVertex = (index: number): void => {
@@ -156,6 +167,7 @@ export function applySpatialAnalysisToGeometry(input: SpatialAnalysisFieldInput)
         temperatureField,
         salinityField,
         chlorophyllField,
+        currentField,
       )
       if (modelValue != null) {
         color = dimColor(colorScalarValue(variable, modelValue, modelRange.min, modelRange.max))

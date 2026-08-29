@@ -9,6 +9,10 @@ import { CurrentScaleControl } from './CurrentScaleControl'
 import { SalinityScaleControl } from './SalinityScaleControl'
 import { ChlorophyllScaleControl } from './ChlorophyllScaleControl'
 import { AnalysisModeControl } from './AnalysisModeControl'
+import { ValidationRegionControl } from './ValidationRegionControl'
+import { DatasetInfo } from './DatasetInfo'
+import { TransectControl } from './TransectControl'
+import type { ValidationRegionBounds, TransectEndpoints } from '../../types/analysis'
 
 interface ControlPanelProps {
   selectedVariable: OceanVariable
@@ -38,11 +42,23 @@ interface ControlPanelProps {
   chlorophyllScaleMax?: number
   analysisMode: AnalysisMode
   onAnalysisModeChange: (mode: AnalysisMode) => void
+  validationRegion?: ValidationRegionBounds
+  onValidationRegionChange?: (region: ValidationRegionBounds) => void
+  regionPickActive?: boolean
+  onToggleRegionPick?: () => void
+  regionPickHint?: string | null
+  transect?: TransectEndpoints
+  transectPickActive?: boolean
+  transectPickHint?: string | null
+  onToggleTransectPick?: () => void
+  onResetTransect?: () => void
+  onBackToMap?: () => void
   validationLayerEnabled?: boolean
   onValidationLayerChange?: (enabled: boolean) => void
   apiModelDepth: number
   availableDepths: number[]
   depthTicks: number[]
+  selectedDate?: string
 }
 
 export function ControlPanel(props: ControlPanelProps) {
@@ -60,6 +76,45 @@ export function ControlPanel(props: ControlPanelProps) {
       />
       <div className="control-divider" />
       <AnalysisModeControl value={props.analysisMode} onChange={props.onAnalysisModeChange} />
+      {props.analysisMode === 'regionalValidation' &&
+      props.validationRegion &&
+      props.onValidationRegionChange &&
+      props.onToggleRegionPick ? (
+        <>
+          <div className="control-divider" />
+          <ValidationRegionControl
+            region={props.validationRegion}
+            onRegionChange={props.onValidationRegionChange}
+            regionPickActive={props.regionPickActive ?? false}
+            onToggleRegionPick={props.onToggleRegionPick}
+            pickHint={props.regionPickHint}
+          />
+        </>
+      ) : null}
+      {props.analysisMode === 'verticalSection' &&
+      props.transect &&
+      props.onToggleTransectPick &&
+      props.onResetTransect ? (
+        <>
+          <div className="control-divider" />
+          <TransectControl
+            transect={props.transect}
+            transectPickActive={props.transectPickActive ?? false}
+            pickHint={props.transectPickHint}
+            onTogglePick={props.onToggleTransectPick}
+            onReset={props.onResetTransect}
+            onBackToMap={props.onBackToMap}
+          />
+        </>
+      ) : null}
+      <div className="control-divider" />
+      <DatasetInfo
+        selectedVariable={props.selectedVariable}
+        selectedDepth={props.selectedDepth}
+        apiModelDepth={props.apiModelDepth}
+        selectedDate={props.selectedDate ?? ''}
+        analysisMode={props.analysisMode}
+      />
       <div className="control-divider" />
       <LayerControls
         modelLayerEnabled={props.modelLayerEnabled}

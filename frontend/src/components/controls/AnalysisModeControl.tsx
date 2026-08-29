@@ -23,6 +23,12 @@ const ANALYSIS_OPTIONS: { value: AnalysisMode; label: string; hint: string; wide
     hint: 'Regional model vs observation validation',
     wide: true,
   },
+  {
+    value: 'verticalSection',
+    label: 'Vertical Section',
+    hint: 'Cross-section along a map transect',
+    wide: true,
+  },
 ]
 
 interface AnalysisModeControlProps {

@@ -2,6 +2,13 @@ import { Loader2, Pause, Play, SkipBack, SkipForward } from 'lucide-react'
 import { formatDisplayDate, formatShortDate } from '../../utils/dateFormat'
 import { Slider } from '../common/Slider'
 
+export const PLAYBACK_SPEED_OPTIONS = [
+  { label: '0.5×', multiplier: 2 },
+  { label: '1×', multiplier: 1 },
+  { label: '2×', multiplier: 0.5 },
+  { label: '5×', multiplier: 0.2 },
+] as const
+
 interface TimelineProps {
   dates: string[]
   currentDate: string
@@ -9,6 +16,8 @@ interface TimelineProps {
   isPlaying: boolean
   isLoading?: boolean
   timestepError?: string | null
+  playbackSpeedIndex?: number
+  onPlaybackSpeedChange?: (index: number) => void
   onDateIndexChange: (index: number) => void
   onTogglePlay: () => void
   onPrevious: () => void
@@ -22,6 +31,8 @@ export function Timeline({
   isPlaying,
   isLoading = false,
   timestepError = null,
+  playbackSpeedIndex = 1,
+  onPlaybackSpeedChange,
   onDateIndexChange,
   onTogglePlay,
   onPrevious,
@@ -29,6 +40,7 @@ export function Timeline({
 }: TimelineProps) {
   const maxIndex = Math.max(0, dates.length - 1)
   const atEnd = dateIndex >= maxIndex
+  const speedLabel = PLAYBACK_SPEED_OPTIONS[playbackSpeedIndex]?.label ?? '1×'
 
   return (
     <div className={`timeline ${isPlaying ? 'timeline--playing' : ''}`}>
@@ -60,6 +72,22 @@ export function Timeline({
         >
           <SkipForward size={16} />
         </button>
+        {onPlaybackSpeedChange ? (
+          <select
+            className="timeline__speed-select"
+            value={playbackSpeedIndex}
+            onChange={(e) => onPlaybackSpeedChange(Number(e.target.value))}
+            aria-label="Playback speed"
+          >
+            {PLAYBACK_SPEED_OPTIONS.map((opt, i) => (
+              <option key={opt.label} value={i}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="timeline__speed-label">{speedLabel}</span>
+        )}
       </div>
       <div className="timeline__slider-wrap">
         <Slider

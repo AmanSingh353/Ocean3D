@@ -3,12 +3,16 @@ import type {
   RegionValidationStats,
   SpatialAnalysisSnapshot,
   SpatialValidationPoint,
+  ValidationRegionBounds,
 } from '../types/analysis'
 import type { DepthMatchKind, Instrument, InstrumentProfile, OceanVariable } from '../types/ocean'
 import { getVariableMeta } from '../data/variableMeta'
+import { isPointInValidationRegion } from '../data/validationRegions'
 import { sampleAtDepth } from './sampleAtDepth'
 import {
+  computePearsonCorrelation,
   extractMatchedPairs,
+  getValidationStatus,
 } from './validationMetrics'
 
 export function buildSpatialValidationPoint(
@@ -50,9 +54,20 @@ export function buildSpatialValidationPoint(
   }
 }
 
+export function filterPointsInRegion(
+  points: SpatialValidationPoint[],
+  region: ValidationRegionBounds,
+): SpatialValidationPoint[] {
+  return points.filter((p) =>
+    isPointInValidationRegion(p.latitude, p.longitude, region),
+  )
+}
+
 export function computeRegionValidationStats(
   points: SpatialValidationPoint[],
   variable: OceanVariable,
+  regionLabel: string,
+  profilesById?: Map<string, InstrumentProfile>,
 ): RegionValidationStats {
   const meta = getVariableMeta(variable)
   const valid = points.filter((p) => p.hasData && p.model != null && p.observation != null)
@@ -61,12 +76,16 @@ export function computeRegionValidationStats(
     return {
       variable,
       unit: meta.unit,
+      regionLabel,
       matchedPlatforms: 0,
       meanBias: null,
       mae: null,
       rmse: null,
+      correlation: null,
+      minAbsoluteError: null,
       maxAbsoluteError: null,
       medianAbsoluteError: null,
+      validationStatus: null,
     }
   }
 
@@ -79,20 +98,34 @@ export function computeRegionValidationStats(
   const mae = absErrors.reduce((a, b) => a + b, 0) / absErrors.length
   const rmse = Math.sqrt(squared.reduce((a, b) => a + b, 0) / squared.length)
   const maxAbsoluteError = Math.max(...absErrors)
+  const minAbsoluteError = Math.min(...absErrors)
   const medianAbsoluteError =
     sortedAbs.length % 2 === 0
       ? (sortedAbs[sortedAbs.length / 2 - 1] + sortedAbs[sortedAbs.length / 2]) / 2
       : sortedAbs[Math.floor(sortedAbs.length / 2)]
 
+  let correlation: number | null = null
+  if (profilesById && valid.length >= 2) {
+    const allPairs = valid.flatMap((p) => {
+      const profile = profilesById.get(p.instrumentId)
+      return profile ? extractMatchedPairs(profile, variable) : []
+    })
+    correlation = computePearsonCorrelation(allPairs)
+  }
+
   return {
     variable,
     unit: meta.unit,
+    regionLabel,
     matchedPlatforms: valid.length,
     meanBias,
     mae,
     rmse,
+    correlation,
+    minAbsoluteError,
     maxAbsoluteError,
     medianAbsoluteError,
+    validationStatus: getValidationStatus(rmse, variable),
   }
 }
 
@@ -112,18 +145,22 @@ function getAnalysisValue(point: SpatialValidationPoint, mode: AnalysisMode): nu
     case 'difference':
     case 'regionalValidation':
       return point.difference
+    case 'verticalSection':
+      return point.model
     case 'absoluteError':
       return point.absoluteError
   }
 }
 
-/** Whether this mode requires platform profile data to be loaded. */
+  /** Whether this mode requires platform profile data to be loaded. */
 export function requiresSpatialProfiles(mode: AnalysisMode): boolean {
+  if (mode === 'verticalSection') return true
   return mode !== 'model'
 }
 
 /** Mesh overlay uses platform-influence coloring (not plain model field). */
 export function usesSpatialMeshOverlay(mode: AnalysisMode, validationLayerEnabled: boolean): boolean {
+  if (mode === 'verticalSection') return false
   if (mode === 'regionalValidation') return validationLayerEnabled
   return mode !== 'model'
 }
@@ -134,8 +171,9 @@ export function computeSpatialAnalysisSnapshot(
   depth: number,
   variable: OceanVariable,
   mode: AnalysisMode,
+  region: ValidationRegionBounds,
 ): SpatialAnalysisSnapshot {
-  const points = instruments.map((instrument) => {
+  const allPoints = instruments.map((instrument) => {
     const profile = profilesById.get(instrument.id)
     if (!profile) {
       return {
@@ -153,7 +191,17 @@ export function computeSpatialAnalysisSnapshot(
     return buildSpatialValidationPoint(instrument, profile, depth, variable)
   })
 
-  const region = computeRegionValidationStats(points, variable)
+  const points =
+    mode === 'regionalValidation'
+      ? filterPointsInRegion(allPoints, region)
+      : allPoints
+
+  const regionStats = computeRegionValidationStats(
+    points,
+    variable,
+    region.label,
+    profilesById,
+  )
   const validValues = points
     .filter((p) => p.hasData)
     .map((p) => getAnalysisValue(p, mode))
@@ -185,7 +233,7 @@ export function computeSpatialAnalysisSnapshot(
 
   return {
     points,
-    region,
+    region: regionStats,
     legendMin,
     legendMax,
     hasData: validValues.length > 0,
@@ -225,4 +273,15 @@ export function findNearestSpatialPoint(
 
   if (!nearest || nearestDist > PLATFORM_INFLUENCE_DEG) return null
   return nearest
+}
+
+/** Legend range when regional validation spatial error layer is active. */
+export function regionalAbsoluteErrorLegend(
+  region: RegionValidationStats,
+): { min: number; max: number } {
+  const maxAe = region.maxAbsoluteError
+  return {
+    min: 0,
+    max: maxAe != null && maxAe > 0 ? maxAe : 0.001,
+  }
 }

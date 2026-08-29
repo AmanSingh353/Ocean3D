@@ -22,24 +22,30 @@ interface AnalysisColorbarProps {
   max: number | null
 }
 
-function getTitle(mode: AnalysisMode, variable: OceanVariable): string {
+function getDisplayTitle(mode: AnalysisMode, variable: OceanVariable): string {
+  const meta = getVariableMeta(variable)
+  const name = meta.label.toUpperCase()
   switch (mode) {
     case 'model':
-      return getVariableMeta(variable).label
+      return name
     case 'observation':
-      return 'Observation'
+      return `${name} OBSERVATION`
     case 'difference':
-      return 'Difference'
+      return `${name} DIFFERENCE`
     case 'absoluteError':
-      return 'Absolute Error'
+      return `${name} ABSOLUTE ERROR`
     case 'regionalValidation':
-      return 'Regional Validation'
+      return 'ABSOLUTE ERROR'
+    case 'verticalSection':
+      return name
   }
 }
 
 function getGradient(mode: AnalysisMode, variable: OceanVariable): string {
-  if (mode === 'difference' || mode === 'regionalValidation') return getDifferenceGradientCss('vertical')
-  if (mode === 'absoluteError') return getAbsoluteErrorGradientCss('vertical')
+  if (mode === 'difference') return getDifferenceGradientCss('vertical')
+  if (mode === 'absoluteError' || mode === 'regionalValidation') {
+    return getAbsoluteErrorGradientCss('vertical')
+  }
   switch (variable) {
     case 'temperature':
       return getTemperatureGradientCss('vertical')
@@ -53,29 +59,27 @@ function getGradient(mode: AnalysisMode, variable: OceanVariable): string {
 }
 
 function getExtremeLabels(mode: AnalysisMode): { low: string; high: string } {
-  if (mode === 'difference' || mode === 'regionalValidation') return { low: 'Negative', high: 'Positive' }
-  if (mode === 'absoluteError') return { low: '0', high: 'High' }
+  if (mode === 'difference') return { low: 'Negative', high: 'Positive' }
+  if (mode === 'absoluteError' || mode === 'regionalValidation') {
+    return { low: '0', high: 'High' }
+  }
   return { low: 'Low', high: 'High' }
 }
 
 export function AnalysisColorbar({ mode, variable, min, max }: AnalysisColorbarProps) {
   const unit = getVariableMeta(variable).unit
-  const title = getTitle(mode, variable)
-  const displayTitle =
-    mode === 'absoluteError'
-      ? 'ABSOLUTE ERROR'
-      : mode === 'regionalValidation'
-        ? 'REGIONAL VALIDATION'
-        : title
+  const displayTitle = getDisplayTitle(mode, variable)
+  const colorbarMode =
+    mode === 'regionalValidation' ? 'absoluteError' : mode
 
   const ticks = useMemo(() => {
     if (min == null || max == null) return []
-    if (mode === 'difference' || mode === 'regionalValidation') return getDifferenceLegendTicks(min, max)
-    if (mode === 'absoluteError') return getAbsoluteErrorLegendTicks(min, max)
+    if (colorbarMode === 'difference') return getDifferenceLegendTicks(min, max)
+    if (colorbarMode === 'absoluteError') return getAbsoluteErrorLegendTicks(min, max)
     return getLegendTicks(min, max).reverse()
-  }, [min, max, mode])
+  }, [min, max, colorbarMode])
 
-  const extremes = getExtremeLabels(mode)
+  const extremes = getExtremeLabels(colorbarMode)
 
   if (min == null || max == null) {
     return (
@@ -90,7 +94,7 @@ export function AnalysisColorbar({ mode, variable, min, max }: AnalysisColorbarP
     <div className="analysis-colorbar">
       <span className="analysis-colorbar__title">
         {displayTitle}{' '}
-        <span className="analysis-colorbar__unit">{unit}</span>
+        <span className="analysis-colorbar__unit">({unit})</span>
       </span>
       <div className="analysis-colorbar__body">
         <div className="analysis-colorbar__labels">
@@ -104,7 +108,7 @@ export function AnalysisColorbar({ mode, variable, min, max }: AnalysisColorbarP
         </div>
         <div
           className="analysis-colorbar__gradient"
-          style={{ background: getGradient(mode, variable) }}
+          style={{ background: getGradient(colorbarMode, variable) }}
           aria-hidden
         />
       </div>

@@ -9,6 +9,13 @@ import {
 } from 'react'
 import { DEFAULT_DATES, DEFAULT_DEPTHS } from '../data/defaults'
 import { getVariableDemoRange } from '../data/variables'
+import {
+  DEFAULT_VALIDATION_REGION,
+  type ValidationRegionBounds,
+} from '../data/validationRegions'
+import { boundsFromCorners } from '../utils/regionMapPick'
+import { DEFAULT_TRANSECT, analysisModeToSectionSource, type VerticalSectionDisplayMode } from '../utils/verticalSectionData'
+import type { TransectEndpoints } from '../types/analysis'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import {
   formatObservationTime,
@@ -81,7 +88,23 @@ export function OceanProvider({ children }: OceanProviderProps) {
   const [instrumentProfile, setInstrumentProfile] = useState<InstrumentProfile | null>(null)
   const [comparison, setComparison] = useState<ComparisonStats | null>(null)
   const [observationTime, setObservationTime] = useState('')
-  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('model')
+  const [analysisMode, setAnalysisModeState] = useState<AnalysisMode>('model')
+  const [verticalSectionSourceMode, setVerticalSectionSourceMode] =
+    useState<VerticalSectionDisplayMode>('model')
+  const [validationRegion, setValidationRegion] =
+    useState<ValidationRegionBounds>({ ...DEFAULT_VALIDATION_REGION })
+  const [validationLayerEnabled, setValidationLayerEnabled] = useState(false)
+  const [regionPickActive, setRegionPickActive] = useState(false)
+  const [regionPickCorner, setRegionPickCorner] = useState<{ lat: number; lon: number } | null>(
+    null,
+  )
+  const [regionPickHint, setRegionPickHint] = useState<string | null>(null)
+  const [transect, setTransect] = useState<TransectEndpoints>({ ...DEFAULT_TRANSECT })
+  const [transectPickActive, setTransectPickActive] = useState(false)
+  const [transectPickCorner, setTransectPickCorner] = useState<{ lat: number; lon: number } | null>(
+    null,
+  )
+  const [transectPickHint, setTransectPickHint] = useState<string | null>(null)
   const [spatialProfilesLoading, setSpatialProfilesLoading] = useState(false)
   const [spatialProfilesError, setSpatialProfilesError] = useState<string | null>(null)
   const [spatialProfilesVersion, setSpatialProfilesVersion] = useState(0)
@@ -196,6 +219,94 @@ export function OceanProvider({ children }: OceanProviderProps) {
         setChlorophyllData(null)
         break
     }
+  }, [])
+
+  const toggleRegionPick = useCallback(() => {
+    setRegionPickActive((active) => {
+      if (active) {
+        setRegionPickCorner(null)
+        setRegionPickHint(null)
+      } else {
+        setTransectPickActive(false)
+        setTransectPickCorner(null)
+        setTransectPickHint(null)
+        setRegionPickHint('Select first corner.')
+      }
+      return !active
+    })
+  }, [])
+
+  const handleRegionMapPick = useCallback((lat: number, lon: number) => {
+    if (!regionPickActive) return
+    if (!regionPickCorner) {
+      setRegionPickCorner({ lat, lon })
+      setRegionPickHint('Select second corner.')
+      return
+    }
+    const box = boundsFromCorners(regionPickCorner, { lat, lon })
+    setValidationRegion({
+      id: 'custom',
+      label: 'Custom Region',
+      latMin: box.latMin,
+      latMax: box.latMax,
+      lonMin: box.lonMin,
+      lonMax: box.lonMax,
+    })
+    setRegionPickActive(false)
+    setRegionPickCorner(null)
+    setRegionPickHint(null)
+  }, [regionPickActive, regionPickCorner])
+
+  const toggleTransectPick = useCallback(() => {
+    setTransectPickActive((active) => {
+      if (active) {
+        setTransectPickCorner(null)
+        setTransectPickHint(null)
+      } else {
+        setRegionPickActive(false)
+        setRegionPickCorner(null)
+        setRegionPickHint(null)
+        setTransectPickHint('Select transect start point.')
+      }
+      return !active
+    })
+  }, [])
+
+  const handleTransectMapPick = useCallback((lat: number, lon: number) => {
+    if (!transectPickActive) return
+    if (!transectPickCorner) {
+      setTransectPickCorner({ lat, lon })
+      setTransectPickHint('Select transect end point.')
+      return
+    }
+    setTransect({
+      start: transectPickCorner,
+      end: { lat, lon },
+      sampleCount: DEFAULT_TRANSECT.sampleCount,
+    })
+    setTransectPickActive(false)
+    setTransectPickCorner(null)
+    setTransectPickHint(null)
+  }, [transectPickActive, transectPickCorner])
+
+  const resetTransect = useCallback(() => {
+    setTransect({ ...DEFAULT_TRANSECT })
+    setTransectPickActive(false)
+    setTransectPickCorner(null)
+    setTransectPickHint(null)
+  }, [])
+
+  const setAnalysisMode = useCallback((mode: AnalysisMode) => {
+    setAnalysisModeState((prev) => {
+      if (mode === 'verticalSection') {
+        if (prev !== 'verticalSection' && prev !== 'regionalValidation') {
+          setVerticalSectionSourceMode(analysisModeToSectionSource(prev))
+        }
+      } else if (mode !== 'regionalValidation') {
+        setVerticalSectionSourceMode(analysisModeToSectionSource(mode))
+      }
+      return mode
+    })
   }, [])
 
   const setDateIndex = useCallback(
@@ -426,8 +537,8 @@ export function OceanProvider({ children }: OceanProviderProps) {
       setComparison(null)
       return
     }
-    setComparison(getComparisonAtDepth(instrumentProfile, selectedDepth, selectedVariable))
-  }, [instrumentProfile, selectedDepth, selectedVariable])
+    setComparison(getComparisonAtDepth(instrumentProfile, selectedDepth, selectedVariable, apiModelDepth))
+  }, [instrumentProfile, selectedDepth, selectedVariable, apiModelDepth])
 
   const profilesById = useMemo(() => {
     const map = new Map<string, InstrumentProfile>()
@@ -498,8 +609,9 @@ export function OceanProvider({ children }: OceanProviderProps) {
       selectedDepth,
       selectedVariable,
       analysisMode,
+      validationRegion,
     )
-  }, [analysisMode, instruments, profilesById, selectedDepth, selectedVariable])
+  }, [analysisMode, instruments, profilesById, selectedDepth, selectedVariable, validationRegion])
 
   const isTimestepLoading =
     isModelLoading ||
@@ -541,6 +653,22 @@ export function OceanProvider({ children }: OceanProviderProps) {
       observationTime,
       analysisMode,
       setAnalysisMode,
+      verticalSectionSourceMode,
+      profilesById,
+      validationRegion,
+      setValidationRegion,
+      validationLayerEnabled,
+      setValidationLayerEnabled,
+      regionPickActive,
+      regionPickHint,
+      toggleRegionPick,
+      handleRegionMapPick,
+      transect,
+      transectPickActive,
+      transectPickHint,
+      toggleTransectPick,
+      handleTransectMapPick,
+      resetTransect,
       spatialAnalysis,
       regionValidation: spatialAnalysis?.region ?? null,
       isSpatialProfilesLoading: spatialProfilesLoading,
@@ -593,6 +721,21 @@ export function OceanProvider({ children }: OceanProviderProps) {
       comparison,
       observationTime,
       analysisMode,
+      setAnalysisMode,
+      verticalSectionSourceMode,
+      profilesById,
+      validationRegion,
+      validationLayerEnabled,
+      regionPickActive,
+      regionPickHint,
+      toggleRegionPick,
+      handleRegionMapPick,
+      transect,
+      transectPickActive,
+      transectPickHint,
+      toggleTransectPick,
+      handleTransectMapPick,
+      resetTransect,
       spatialAnalysis,
       spatialProfilesLoading,
       spatialProfilesError,

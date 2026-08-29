@@ -5,7 +5,7 @@ import { ControlPanel } from './components/controls/ControlPanel'
 import { OceanViewer } from './components/ocean-viewer/OceanViewer'
 import type { ViewMode } from './components/ocean-viewer/VisualizationToolbar'
 import { ObservationPanel } from './components/observation/ObservationPanel'
-import { Timeline } from './components/timeline/Timeline'
+import { Timeline, PLAYBACK_SPEED_OPTIONS } from './components/timeline/Timeline'
 import { OceanProvider } from './context/OceanProvider'
 import { useOcean } from './hooks/useOcean'
 import { useTimelinePlayback } from './hooks/useTimelinePlayback'
@@ -48,7 +48,20 @@ function Dashboard() {
   const [resetToken, setResetToken] = useState(0)
   const [controlsOpen, setControlsOpen] = useState(false)
   const [observationOpen, setObservationOpen] = useState(false)
-  const [validationLayerEnabled, setValidationLayerEnabled] = useState(false)
+  const [playbackSpeedIndex, setPlaybackSpeedIndex] = useState(1)
+
+  const playbackIntervalMs = useMemo(
+    () => 1200 * (PLAYBACK_SPEED_OPTIONS[playbackSpeedIndex]?.multiplier ?? 1),
+    [playbackSpeedIndex],
+  )
+
+  const handleMapPick = useCallback(
+    (lat: number, lon: number) => {
+      if (ocean.regionPickActive) ocean.handleRegionMapPick(lat, lon)
+      else if (ocean.transectPickActive) ocean.handleTransectMapPick(lat, lon)
+    },
+    [ocean],
+  )
 
   const handleAdvanceTimestep = useCallback(() => {
     ocean.setDateIndex(Math.min(ocean.availableDates.length - 1, ocean.dateIndex + 1))
@@ -60,6 +73,7 @@ function Dashboard() {
     isTimestepLoading: ocean.isTimestepLoading,
     hasTimestepError: Boolean(ocean.timestepError),
     onAdvance: handleAdvanceTimestep,
+    intervalMs: playbackIntervalMs,
   })
 
   const handleDateIndexChange = useCallback(
@@ -152,8 +166,20 @@ function Dashboard() {
             chlorophyllScaleMax={ocean.chlorophyllScaleMax}
             analysisMode={ocean.analysisMode}
             onAnalysisModeChange={ocean.setAnalysisMode}
-            validationLayerEnabled={validationLayerEnabled}
-            onValidationLayerChange={setValidationLayerEnabled}
+            validationRegion={ocean.validationRegion}
+            onValidationRegionChange={ocean.setValidationRegion}
+            regionPickActive={ocean.regionPickActive}
+            onToggleRegionPick={ocean.toggleRegionPick}
+            regionPickHint={ocean.regionPickHint}
+            validationLayerEnabled={ocean.validationLayerEnabled}
+            onValidationLayerChange={ocean.setValidationLayerEnabled}
+            selectedDate={ocean.selectedDate}
+            transect={ocean.transect}
+            transectPickActive={ocean.transectPickActive}
+            transectPickHint={ocean.transectPickHint}
+            onToggleTransectPick={ocean.toggleTransectPick}
+            onResetTransect={ocean.resetTransect}
+            onBackToMap={() => ocean.setAnalysisMode('model')}
           />
         }
         viewer={
@@ -188,7 +214,17 @@ function Dashboard() {
             analysisMode={ocean.analysisMode}
             spatialAnalysis={ocean.spatialAnalysis}
             spatialProfilesLoading={ocean.isSpatialProfilesLoading}
-            validationLayerEnabled={validationLayerEnabled}
+            validationLayerEnabled={ocean.validationLayerEnabled}
+            validationRegion={ocean.validationRegion}
+            regionPickActive={ocean.regionPickActive}
+            transectPickActive={ocean.transectPickActive}
+            transect={ocean.transect}
+            onMapPick={handleMapPick}
+            maxModelDepth={Math.max(...ocean.availableDepths, 1000)}
+            verticalSectionSourceMode={ocean.verticalSectionSourceMode}
+            profilesById={ocean.profilesById}
+            availableDepths={ocean.availableDepths}
+            spatialProfilesLoadingForSection={ocean.isSpatialProfilesLoading}
           />
         }
         observation={
@@ -210,6 +246,9 @@ function Dashboard() {
             spatialProfilesError={ocean.spatialProfilesError}
             selectedDepth={ocean.selectedDepth}
             spatialAnalysis={ocean.spatialAnalysis}
+            transect={ocean.transect}
+            validationRegion={ocean.validationRegion}
+            verticalSectionSourceMode={ocean.verticalSectionSourceMode}
           />
         }
         timeline={
@@ -220,6 +259,8 @@ function Dashboard() {
             isPlaying={playback.isPlaying}
             isLoading={ocean.isTimestepLoading}
             timestepError={ocean.timestepError}
+            playbackSpeedIndex={playbackSpeedIndex}
+            onPlaybackSpeedChange={setPlaybackSpeedIndex}
             onDateIndexChange={handleDateIndexChange}
             onTogglePlay={playback.togglePlay}
             onPrevious={() => {

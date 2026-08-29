@@ -24,6 +24,13 @@ export {
   type ObservationPlatformRef,
 } from './observationData'
 export {
+  VALIDATION_REGION_PRESETS,
+  DEFAULT_VALIDATION_REGION,
+  isPointInValidationRegion,
+  type ValidationRegionBounds,
+} from './validationRegions'
+export { DEMO_DATA_DISCLAIMER, type OceanModelSample, type ObservationSample } from './validationData'
+export {
   VARIABLE_META,
   VARIABLE_OPTIONS,
   getVariableMeta,

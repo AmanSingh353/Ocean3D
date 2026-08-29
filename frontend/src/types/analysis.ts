@@ -1,4 +1,7 @@
-import type { DepthMatchKind, Instrument, OceanVariable } from './ocean'
+import type { DepthMatchKind, Instrument, OceanVariable, ValidationStatus } from './ocean'
+import type { ValidationRegionBounds } from '../data/validationRegions'
+
+export type { ValidationRegionBounds }
 
 export type AnalysisMode =
   | 'model'
@@ -6,6 +9,7 @@ export type AnalysisMode =
   | 'difference'
   | 'absoluteError'
   | 'regionalValidation'
+  | 'verticalSection'
 
 export interface SpatialValidationPoint {
   instrumentId: string
@@ -23,12 +27,16 @@ export interface SpatialValidationPoint {
 export interface RegionValidationStats {
   variable: OceanVariable
   unit: string
+  regionLabel: string
   matchedPlatforms: number
   meanBias: number | null
   mae: number | null
   rmse: number | null
+  correlation: number | null
+  minAbsoluteError: number | null
   maxAbsoluteError: number | null
   medianAbsoluteError: number | null
+  validationStatus: ValidationStatus | null
 }
 
 export interface SpatialAnalysisSnapshot {
@@ -38,6 +46,12 @@ export interface SpatialAnalysisSnapshot {
   legendMin: number | null
   legendMax: number | null
   hasData: boolean
+}
+
+export interface TransectEndpoints {
+  start: { lat: number; lon: number }
+  end: { lat: number; lon: number }
+  sampleCount: number
 }
 
 export interface InstrumentProfileCacheEntry {

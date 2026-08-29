@@ -29,10 +29,23 @@ import { CurrentColorbar } from './CurrentColorbar'
 import { SalinityColorbar } from './SalinityColorbar'
 import { TemperatureColorbar } from './TemperatureColorbar'
 import { VisualizationToolbar, type ViewMode } from './VisualizationToolbar'
-import type { AnalysisMode, SpatialAnalysisSnapshot } from '../../types/analysis'
+import { VerticalSectionView } from './VerticalSectionView'
+import type { AnalysisMode, SpatialAnalysisSnapshot, ValidationRegionBounds, TransectEndpoints } from '../../types/analysis'
+import type { InstrumentProfile } from '../../types/ocean'
+import type { VerticalSectionDisplayMode } from '../../utils/verticalSectionData'
 import { applySpatialAnalysisToGeometry } from '../../utils/spatialAnalysisField'
-import { usesSpatialMeshOverlay } from '../../utils/spatialValidation'
+import { usesSpatialMeshOverlay, regionalAbsoluteErrorLegend } from '../../utils/spatialValidation'
+import {
+  createActiveDepthSlicePlane,
+  createDepthReferencePlanes,
+  createOceanColumnOutline,
+  depthPlaneY,
+  depthToSliceOffset,
+  updateDepthVolumePositions,
+} from '../../utils/oceanVolume'
+import { pickLatLonFromPointer } from '../../utils/regionMapPick'
 import { defaultModelGrid, DEFAULT_REGION } from '../../data/defaults'
+import { OCEAN_DEPTHS } from '../../data/depths'
 import { INDIAN_OCEAN_COASTLINE, INDIAN_OCEAN_LAND } from '../../data/indianOceanMap'
 import {
   createCoastlineGeometryFromGeoJSON,
@@ -59,6 +72,7 @@ import { GeoDebugLabel } from './GeoDebugLabel'
 import {
   INDIAN_OCEAN_VIEW_BOUNDS,
   GEO_MARKER_Y,
+  GEO_MODEL_SURFACE_Y,
   latLonToWorld,
   projectSceneToScreen,
 } from '../../utils/geoProjection'
@@ -106,6 +120,16 @@ interface OceanViewerProps {
   spatialAnalysis: SpatialAnalysisSnapshot | null
   spatialProfilesLoading: boolean
   validationLayerEnabled?: boolean
+  validationRegion?: ValidationRegionBounds
+  regionPickActive?: boolean
+  transectPickActive?: boolean
+  transect?: TransectEndpoints
+  onMapPick?: (lat: number, lon: number) => void
+  maxModelDepth?: number
+  verticalSectionSourceMode?: VerticalSectionDisplayMode
+  profilesById?: Map<string, InstrumentProfile>
+  availableDepths?: number[]
+  spatialProfilesLoadingForSection?: boolean
 }
 
 interface MarkerScreenPosition {
@@ -128,7 +152,7 @@ export function OceanViewer({
   showArgo,
   showGliders,
   showCurrents,
-  verticalExaggeration: _verticalExaggeration,
+  verticalExaggeration,
   selectedInstrumentId,
   instruments,
   temperatureField,
@@ -148,8 +172,19 @@ export function OceanViewer({
   spatialAnalysis,
   spatialProfilesLoading,
   validationLayerEnabled = false,
+  validationRegion,
+  regionPickActive = false,
+  transectPickActive = false,
+  transect,
+  onMapPick,
+  maxModelDepth = 1000,
+  verticalSectionSourceMode = 'model',
+  profilesById = new Map(),
+  availableDepths = [...OCEAN_DEPTHS],
+  spatialProfilesLoadingForSection = false,
 }: OceanViewerProps) {
   const canvasHostRef = useRef<HTMLDivElement>(null)
+  const [hoverCoords, setHoverCoords] = useState<{ lat: number; lon: number } | null>(null)
   const instrumentsRef = useRef(instruments)
   instrumentsRef.current = instruments
   const [markerScreenPos, setMarkerScreenPos] = useState<Record<string, MarkerScreenPosition>>({})
@@ -170,6 +205,10 @@ export function OceanViewer({
     oceanMesh: THREE.Mesh
     geoDebugOutline: THREE.LineSegments | null
     geoDebugMarkers: THREE.LineSegments | null
+    regionOutline: THREE.LineSegments | null
+    transectLine: THREE.LineSegments | null
+    activeDepthSlice: THREE.Mesh
+    depthVolume: THREE.Group
     currents: THREE.Group
   } | null>(null)
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 })
@@ -179,8 +218,8 @@ export function OceanViewer({
   const isSalinityMode = selectedVariable === 'salinity'
   const isChlorophyllMode = selectedVariable === 'chlorophyll'
   const isScalarFieldMode = isTemperatureMode || isSalinityMode || isChlorophyllMode
-  void _verticalExaggeration
   void isScalarFieldMode
+  const isVerticalSection = analysisMode === 'verticalSection'
   const isRegionalValidation = analysisMode === 'regionalValidation'
   const useSpatialMesh = usesSpatialMeshOverlay(analysisMode, validationLayerEnabled)
   const meshOverlayMode = isRegionalValidation ? 'absoluteError' : analysisMode
@@ -189,7 +228,10 @@ export function OceanViewer({
     (isAnalysisActive || isRegionalValidation) &&
     spatialAnalysis != null &&
     !spatialProfilesLoading
-  const showScalarColorbar = analysisMode === 'model' || (isRegionalValidation && !validationLayerEnabled)
+  const showScalarColorbar =
+    analysisMode === 'model' ||
+    isVerticalSection ||
+    (isRegionalValidation && !validationLayerEnabled)
 
   const analysisModeLabel = useMemo(() => {
     switch (analysisMode) {
@@ -203,6 +245,8 @@ export function OceanViewer({
         return 'Absolute Error'
       case 'regionalValidation':
         return 'Regional Validation'
+      case 'verticalSection':
+        return 'Vertical Section'
     }
   }, [analysisMode])
 
@@ -223,6 +267,10 @@ export function OceanViewer({
     analysisMode === 'observation' &&
     meshOverlayReady &&
     !spatialAnalysis.hasData
+  const showDifferenceEmpty =
+    analysisMode === 'difference' &&
+    meshOverlayReady &&
+    !spatialAnalysis.hasData
   const showAbsoluteErrorEmpty =
     analysisMode === 'absoluteError' &&
     meshOverlayReady &&
@@ -236,14 +284,16 @@ export function OceanViewer({
   const meshLegend = useMemo(() => {
     if (!spatialAnalysis) return { min: null as number | null, max: null as number | null }
     if (isRegionalValidation && validationLayerEnabled) {
-      const maxAe = spatialAnalysis.region.maxAbsoluteError
-      return {
-        min: 0,
-        max: maxAe != null && maxAe > 0 ? maxAe : 0.001,
-      }
+      return regionalAbsoluteErrorLegend(spatialAnalysis.region)
     }
     return { min: spatialAnalysis.legendMin, max: spatialAnalysis.legendMax }
   }, [spatialAnalysis, isRegionalValidation, validationLayerEnabled])
+
+  const analysisColorbarMode = useMemo((): AnalysisMode => {
+    if (isRegionalValidation && validationLayerEnabled) return 'absoluteError'
+    if (isRegionalValidation) return 'regionalValidation'
+    return analysisMode
+  }, [analysisMode, isRegionalValidation, validationLayerEnabled])
 
   const temperatureRange = useMemo(
     () => (temperatureField ? getTemperatureRange(temperatureField) : null),
@@ -270,20 +320,22 @@ export function OceanViewer({
     if (!refs) return
 
     const baseOpacity = modelLayerEnabled ? modelOpacity / 100 : 0
-    const effectiveOpacity = baseOpacity
+    const effectiveOpacity = isVerticalSection ? baseOpacity * 0.35 : baseOpacity
+    const depthOffset = depthToSliceOffset(apiModelDepth, maxModelDepth, verticalExaggeration)
 
     const mat = refs.oceanMesh.material as THREE.ShaderMaterial
     setModelFieldOpacity(mat, effectiveOpacity)
     mat.side = THREE.DoubleSide
     mat.visible = effectiveOpacity > 0
 
-    refs.oceanMesh.scale.set(1, 1, 1)
-    refs.oceanMesh.position.set(0, 0, 0)
+    refs.oceanMesh.position.set(0, depthOffset, 0)
+    refs.currents.position.set(0, depthOffset, 0)
+    refs.activeDepthSlice.position.y = depthPlaneY(apiModelDepth, maxModelDepth, verticalExaggeration)
+    updateDepthVolumePositions(refs.depthVolume, OCEAN_DEPTHS, maxModelDepth, verticalExaggeration)
 
     refs.currents.visible = showCurrents
-    refs.currents.scale.set(1, 1, 1)
   }, [
-    modelLayerEnabled, modelOpacity, showCurrents,
+    modelLayerEnabled, modelOpacity, showCurrents, apiModelDepth, maxModelDepth, verticalExaggeration, isVerticalSection,
   ])
 
   const activeModelGrid = useMemo(() => {
@@ -351,6 +403,7 @@ export function OceanViewer({
         temperatureField,
         salinityField: null,
         chlorophyllField: null,
+        currentField: null,
       })
       return
     }
@@ -377,6 +430,7 @@ export function OceanViewer({
         temperatureField: null,
         salinityField,
         chlorophyllField: null,
+        currentField: null,
       })
       return
     }
@@ -403,6 +457,7 @@ export function OceanViewer({
         temperatureField: null,
         salinityField: null,
         chlorophyllField,
+        currentField: null,
       })
       return
     }
@@ -429,6 +484,7 @@ export function OceanViewer({
         temperatureField: null,
         salinityField: null,
         chlorophyllField: null,
+        currentField,
       })
       return
     }
@@ -588,7 +644,57 @@ export function OceanViewer({
     currents.renderOrder = GEO_RENDER_ORDER.currents
     geoGroup.add(currents)
 
-    sceneRef.current = { camera, renderer, controls, geoGroup, oceanMesh, geoDebugOutline, geoDebugMarkers, currents }
+    const regionOutline = new THREE.LineSegments(
+      new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({
+        color: 0xffcc44,
+        transparent: true,
+        opacity: 0.85,
+        depthWrite: false,
+      }),
+    )
+    regionOutline.renderOrder = GEO_RENDER_ORDER.coastlines + 1
+    regionOutline.visible = false
+    geoGroup.add(regionOutline)
+
+    const transectLine = new THREE.LineSegments(
+      new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({
+        color: 0x48d5c3,
+        transparent: true,
+        opacity: 0.9,
+        depthWrite: false,
+      }),
+    )
+    transectLine.renderOrder = GEO_RENDER_ORDER.coastlines + 2
+    transectLine.visible = false
+    geoGroup.add(transectLine)
+
+    const depthVolume = createDepthReferencePlanes(OCEAN_DEPTHS, DEFAULT_REGION, 1000, 1.5)
+    depthVolume.renderOrder = 1
+    geoGroup.add(depthVolume)
+
+    const columnOutline = createOceanColumnOutline(DEFAULT_REGION, 1000, 1.5)
+    columnOutline.renderOrder = 2
+    geoGroup.add(columnOutline)
+
+    const activeDepthSlice = createActiveDepthSlicePlane(DEFAULT_REGION, 1000, 1.5)
+    geoGroup.add(activeDepthSlice)
+
+    sceneRef.current = {
+      camera,
+      renderer,
+      controls,
+      geoGroup,
+      oceanMesh,
+      geoDebugOutline,
+      geoDebugMarkers,
+      regionOutline,
+      transectLine,
+      activeDepthSlice,
+      depthVolume,
+      currents,
+    }
 
     const pendingField = temperatureFieldRef.current
     if (pendingField) {
@@ -664,6 +770,96 @@ export function OceanViewer({
   }, [])
 
   useEffect(() => { updateOceanAppearance() }, [updateOceanAppearance])
+
+  useEffect(() => {
+    const refs = sceneRef.current
+    const host = canvasHostRef.current
+    if (!refs || !host) return
+    const w = Math.max(host.clientWidth, 1)
+    const h = Math.max(host.clientHeight, 1)
+    refs.camera.aspect = w / h
+    refs.camera.updateProjectionMatrix()
+    refs.renderer.setSize(w, h)
+  }, [isVerticalSection])
+
+  useEffect(() => {
+    const refs = sceneRef.current
+    if (!refs?.regionOutline) return
+    const showRegion =
+      analysisMode === 'regionalValidation' && validationRegion != null
+    refs.regionOutline.visible = showRegion
+    if (!showRegion) return
+
+    refs.regionOutline.geometry.dispose()
+    refs.regionOutline.geometry = createBoundsOutlineGeometry({
+      lat_min: validationRegion.latMin,
+      lat_max: validationRegion.latMax,
+      lon_min: validationRegion.lonMin,
+      lon_max: validationRegion.lonMax,
+    })
+  }, [analysisMode, validationRegion])
+
+  useEffect(() => {
+    const host = canvasHostRef.current
+    const refs = sceneRef.current
+    const pickActive = regionPickActive || transectPickActive
+    if (!host || !refs || !pickActive || !onMapPick) return
+
+    const handleClick = (event: MouseEvent) => {
+      const latLon = pickLatLonFromPointer(
+        event.clientX,
+        event.clientY,
+        refs.renderer.domElement,
+        refs.camera,
+      )
+      if (latLon) onMapPick(latLon.lat, latLon.lon)
+    }
+
+    host.addEventListener('click', handleClick)
+    return () => host.removeEventListener('click', handleClick)
+  }, [regionPickActive, transectPickActive, onMapPick])
+
+  useEffect(() => {
+    const host = canvasHostRef.current
+    const refs = sceneRef.current
+    if (!host || !refs) return
+
+    const handleMove = (event: MouseEvent) => {
+      const latLon = pickLatLonFromPointer(
+        event.clientX,
+        event.clientY,
+        refs.renderer.domElement,
+        refs.camera,
+      )
+      setHoverCoords(latLon)
+    }
+    const handleLeave = () => setHoverCoords(null)
+
+    host.addEventListener('mousemove', handleMove)
+    host.addEventListener('mouseleave', handleLeave)
+    return () => {
+      host.removeEventListener('mousemove', handleMove)
+      host.removeEventListener('mouseleave', handleLeave)
+    }
+  }, [])
+
+  useEffect(() => {
+    const refs = sceneRef.current
+    if (!refs?.transectLine || !transect) return
+    const show = analysisMode === 'verticalSection'
+    refs.transectLine.visible = show
+    if (!show) return
+
+    const start = latLonToWorld(transect.start.lat, transect.start.lon, GEO_MODEL_SURFACE_Y + 0.1, INDIAN_OCEAN_VIEW_BOUNDS)
+    const end = latLonToWorld(transect.end.lat, transect.end.lon, GEO_MODEL_SURFACE_Y + 0.1, INDIAN_OCEAN_VIEW_BOUNDS)
+    refs.transectLine.geometry.dispose()
+    const positions = new Float32Array([
+      start.x, start.y, start.z, end.x, end.y, end.z,
+    ])
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    refs.transectLine.geometry = geometry
+  }, [analysisMode, transect])
 
   const activeModelBounds = useMemo(() => {
     const field =
@@ -746,8 +942,28 @@ export function OceanViewer({
   const showTimestepWarning = displayError && hasActiveField && !modelLoading
 
   return (
-    <div className="ocean-viewer">
-      <div className="ocean-viewer__canvas-host" ref={canvasHostRef} />
+    <div className={`ocean-viewer ${isVerticalSection ? 'ocean-viewer--vertical-section' : ''}`}>
+      <div
+        className={`ocean-viewer__canvas-host ${isVerticalSection ? 'ocean-viewer__canvas-host--split-top' : ''} ${regionPickActive || transectPickActive ? 'ocean-viewer__canvas-host--region-pick' : ''}`}
+        ref={canvasHostRef}
+      />
+      {isVerticalSection && transect ? (
+        <div className="ocean-viewer__section-panel">
+          <VerticalSectionView
+            variable={selectedVariable}
+            date={currentDate}
+            transect={transect}
+            selectedDepth={selectedDepth}
+            apiModelDepth={apiModelDepth}
+            analysisMode={analysisMode}
+            sectionDisplayMode={verticalSectionSourceMode}
+            instruments={instruments}
+            profilesById={profilesById}
+            availableDepths={availableDepths}
+            profilesLoading={spatialProfilesLoadingForSection}
+          />
+        </div>
+      ) : null}
       {showInitialLoading || ((isAnalysisActive || isRegionalValidation) && spatialProfilesLoading && !hasActiveField) ? (
         <div className="ocean-viewer__overlay ocean-viewer__overlay--status">
           <div className="view-label view-label--status">Loading ocean model...</div>
@@ -778,6 +994,13 @@ export function OceanViewer({
           </div>
         </div>
       )}
+      {showDifferenceEmpty ? (
+        <div className="ocean-viewer__overlay ocean-viewer__overlay--analysis-empty">
+          <div className="view-label view-label--status">
+            No difference data available at this depth
+          </div>
+        </div>
+      ) : null}
       {showAbsoluteErrorEmpty ? (
         <div className="ocean-viewer__overlay ocean-viewer__overlay--analysis-empty">
           <div className="view-label view-label--status">
@@ -807,6 +1030,11 @@ export function OceanViewer({
             <span className="view-label__detail view-label__detail--analysis">{analysisModeLabel}</span>
           ) : null}
           <span className="view-label__detail">{formatDisplayDate(currentDate)} · 00:00 UTC</span>
+          {hoverCoords ? (
+            <span className="view-label__detail view-label__detail--hint">
+              {hoverCoords.lat.toFixed(2)}°N · {hoverCoords.lon.toFixed(2)}°E
+            </span>
+          ) : null}
         </div>
       </div>
       <div className="ocean-viewer__overlay ocean-viewer__overlay--depth">
@@ -820,14 +1048,14 @@ export function OceanViewer({
       {showAnalysisColorbar ? (
         <div className="ocean-viewer__overlay ocean-viewer__overlay--colorbar">
           <AnalysisColorbar
-            mode={isRegionalValidation ? 'regionalValidation' : analysisMode}
+            mode={analysisColorbarMode}
             variable={selectedVariable}
-            min={spatialAnalysis?.legendMin ?? null}
-            max={spatialAnalysis?.legendMax ?? null}
+            min={meshLegend.min ?? spatialAnalysis?.legendMin ?? null}
+            max={meshLegend.max ?? spatialAnalysis?.legendMax ?? null}
           />
         </div>
       ) : null}
-      {showScalarColorbar && isTemperatureMode && temperatureRange && modelLayerEnabled && (
+      {showScalarColorbar && !isVerticalSection && isTemperatureMode && temperatureRange && modelLayerEnabled && (
         <div className="ocean-viewer__overlay ocean-viewer__overlay--colorbar">
           <TemperatureColorbar
             range={temperatureRange}
@@ -835,7 +1063,7 @@ export function OceanViewer({
           />
         </div>
       )}
-      {showScalarColorbar && isCurrentMode && currentMagnitudeRange && modelLayerEnabled && (
+      {showScalarColorbar && !isVerticalSection && isCurrentMode && currentMagnitudeRange && modelLayerEnabled && (
         <div className="ocean-viewer__overlay ocean-viewer__overlay--colorbar">
           <CurrentColorbar
             unit="m/s"
@@ -844,7 +1072,7 @@ export function OceanViewer({
           />
         </div>
       )}
-      {showScalarColorbar && isSalinityMode && salinityRange && modelLayerEnabled && (
+      {showScalarColorbar && !isVerticalSection && isSalinityMode && salinityRange && modelLayerEnabled && (
         <div className="ocean-viewer__overlay ocean-viewer__overlay--colorbar">
           <SalinityColorbar
             range={salinityRange}
@@ -852,7 +1080,7 @@ export function OceanViewer({
           />
         </div>
       )}
-      {showScalarColorbar && isChlorophyllMode && chlorophyllRange && modelLayerEnabled && (
+      {showScalarColorbar && !isVerticalSection && isChlorophyllMode && chlorophyllRange && modelLayerEnabled && (
         <div className="ocean-viewer__overlay ocean-viewer__overlay--colorbar">
           <ChlorophyllColorbar
             range={chlorophyllRange}

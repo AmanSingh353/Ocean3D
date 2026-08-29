@@ -3,6 +3,8 @@ import type {
   AnalysisMode,
   RegionValidationStats,
   SpatialAnalysisSnapshot,
+  TransectEndpoints,
+  ValidationRegionBounds,
 } from './analysis'
 import type {
   ComparisonStats,
@@ -33,10 +35,19 @@ export interface OceanDataState {
   comparison: ComparisonStats | null
   observationTime: string
   analysisMode: AnalysisMode
+  verticalSectionSourceMode: import('../utils/verticalSectionData').VerticalSectionDisplayMode
+  profilesById: Map<string, InstrumentProfile>
   spatialAnalysis: SpatialAnalysisSnapshot | null
   regionValidation: RegionValidationStats | null
   isSpatialProfilesLoading: boolean
   spatialProfilesError: string | null
+  validationRegion: ValidationRegionBounds
+  validationLayerEnabled: boolean
+  regionPickActive: boolean
+  regionPickHint: string | null
+  transect: TransectEndpoints
+  transectPickActive: boolean
+  transectPickHint: string | null
   isMetadataLoading: boolean
   metadataError: string | null
   isModelLoading: boolean
@@ -56,6 +67,13 @@ export interface OceanDataActions {
   setSelectedDepth: (depth: number) => void
   setSelectedVariable: (variable: OceanVariable) => void
   setAnalysisMode: (mode: AnalysisMode) => void
+  setValidationRegion: (region: ValidationRegionBounds) => void
+  setValidationLayerEnabled: (enabled: boolean) => void
+  toggleRegionPick: () => void
+  handleRegionMapPick: (lat: number, lon: number) => void
+  toggleTransectPick: () => void
+  handleTransectMapPick: (lat: number, lon: number) => void
+  resetTransect: () => void
   selectInstrument: (id: string) => void
   clearInstrumentSelection: () => void
   retryOceanData: () => void

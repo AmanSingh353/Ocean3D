@@ -50,11 +50,19 @@ export type ValidationStatus = 'GOOD' | 'MODERATE' | 'POOR'
 
 export type DepthMatchKind = 'exact' | 'interpolated' | 'unavailable'
 
+export type DepthSampleError = 'no_pairs' | 'below_range' | 'above_range' | 'invalid_span'
+
 export interface ValidationStats {
   variable: OceanVariable
   unit: string
   comparedDepth: number
   depthMatch: DepthMatchKind
+  /** Lower profile/model level used for interpolation at comparedDepth. */
+  modelLevelLower: number | null
+  /** Upper profile/model level used for interpolation at comparedDepth. */
+  modelLevelUpper: number | null
+  /** Nearest discrete model depth level used for map field API requests. */
+  mapModelDepth: number | null
   model: number | null
   observation: number | null
   /** Observation − model at compared depth */
@@ -64,8 +72,11 @@ export interface ValidationStats {
   meanBias: number
   mae: number
   rmse: number
+  correlation: number | null
   matchedPoints: number
   validationStatus: ValidationStatus
+  /** Set when depth-specific comparison cannot be computed. */
+  depthSampleError: DepthSampleError | null
 }
 
 /** @deprecated Alias for ValidationStats */

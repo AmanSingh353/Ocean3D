@@ -1,6 +1,6 @@
 import type { InstrumentProfile, OceanVariable, ProfilePoint, ValidationStats } from '../types/ocean'
 import { formatComparisonMetric, getVariableMeta } from '../data/variableMeta'
-import { sampleAtDepth } from './sampleAtDepth'
+import { sampleAtDepthWithMeta } from './sampleAtDepth'
 
 /** RMSE thresholds per variable — adjust in this file only. */
 export const VALIDATION_RMSE_THRESHOLDS: Record<
@@ -88,10 +88,33 @@ export function getValidationStatus(
   return 'POOR'
 }
 
+export function computePearsonCorrelation(pairs: MatchedProfilePair[]): number | null {
+  if (pairs.length < 2) return null
+  const xs = pairs.map((p) => p.model)
+  const ys = pairs.map((p) => p.observation)
+  const n = xs.length
+  const meanX = xs.reduce((a, b) => a + b, 0) / n
+  const meanY = ys.reduce((a, b) => a + b, 0) / n
+  let num = 0
+  let denX = 0
+  let denY = 0
+  for (let i = 0; i < n; i++) {
+    const dx = xs[i] - meanX
+    const dy = ys[i] - meanY
+    num += dx * dy
+    denX += dx * dx
+    denY += dy * dy
+  }
+  const den = Math.sqrt(denX * denY)
+  if (den <= 0) return null
+  return Number((num / den).toFixed(4))
+}
+
 export function computeValidationStats(
   profile: InstrumentProfile,
   depth: number,
   variable: OceanVariable,
+  mapModelDepth?: number | null,
 ): ValidationStats | null {
   const meta = getVariableMeta(variable)
   const pairs = extractMatchedPairs(profile, variable)
@@ -105,8 +128,10 @@ export function computeValidationStats(
   const meanBias = errors.reduce((a, b) => a + b, 0) / errors.length
   const mae = absErrors.reduce((a, b) => a + b, 0) / absErrors.length
   const rmse = Math.sqrt(squaredErrors.reduce((a, b) => a + b, 0) / squaredErrors.length)
+  const correlation = computePearsonCorrelation(pairs)
 
-  const depthSample = sampleAtDepth(pairs, depth)
+  const depthOutcome = sampleAtDepthWithMeta(pairs, depth)
+  const depthSample = depthOutcome.result
   const bias =
     depthSample != null ? depthSample.observation - depthSample.model : null
   const difference =
@@ -117,6 +142,9 @@ export function computeValidationStats(
     unit: meta.unit,
     comparedDepth: depth,
     depthMatch: depthSample?.depthMatch ?? 'unavailable',
+    modelLevelLower: depthSample?.bracketLower ?? null,
+    modelLevelUpper: depthSample?.bracketUpper ?? null,
+    mapModelDepth: mapModelDepth ?? null,
     model:
       depthSample != null
         ? Number(formatComparisonMetric(depthSample.model, variable))
@@ -131,7 +159,9 @@ export function computeValidationStats(
     meanBias: Number(formatComparisonMetric(meanBias, variable)),
     mae: Number(formatComparisonMetric(mae, variable)),
     rmse: Number(formatComparisonMetric(rmse, variable)),
+    correlation,
     matchedPoints: pairs.length,
     validationStatus: getValidationStatus(rmse, variable),
+    depthSampleError: depthOutcome.failure,
   }
 }

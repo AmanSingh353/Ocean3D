@@ -1,8 +1,11 @@
 import type { AnalysisMode } from '../../types/analysis'
 import type { Instrument, InstrumentProfile, ValidationStats, OceanVariable } from '../../types/ocean'
-import { getVariableMeta } from '../../data/variableMeta'
+import { DEMO_DATA_SHORT } from '../../data/validationData'
+import { getVariableMeta, formatVariableValue } from '../../data/variableMeta'
 import { getProfileSeries } from '../../services/oceanApi'
+import { DemoDataBanner } from '../common/DemoDataBanner'
 import { ProfileChart } from './ProfileChart'
+import { ProfileVariableSummary } from './ProfileVariableSummary'
 import { ComparisonStatsPanel } from './ComparisonStats'
 
 interface InstrumentDetailsProps {
@@ -11,6 +14,7 @@ interface InstrumentDetailsProps {
   comparison: ValidationStats | null
   observationTime: string
   selectedVariable: OceanVariable
+  selectedDepth: number
   apiModelDepth?: number
   selectedDate?: string
   onClearSelection?: () => void
@@ -23,6 +27,7 @@ export function InstrumentDetails({
   comparison,
   observationTime,
   selectedVariable,
+  selectedDepth,
   onClearSelection,
   analysisMode,
   apiModelDepth,
@@ -36,7 +41,9 @@ export function InstrumentDetails({
 
   return (
     <div className="instrument-details">
-      <section className="detail-section detail-section--header">
+      <DemoDataBanner compact />
+
+      <section className="detail-section detail-section--header detail-section--selected">
         <div className="detail-section__row">
           <div>
             <div className="platform-badge">{typeLabel}</div>
@@ -53,80 +60,120 @@ export function InstrumentDetails({
             </button>
           ) : null}
         </div>
+        <div className="selected-platform-summary">
+          <div className="selected-platform-summary__row">
+            <span className="selected-platform-summary__label">Platform type</span>
+            <span>{instrument.platformType}</span>
+          </div>
+          <div className="selected-platform-summary__row">
+            <span className="selected-platform-summary__label">Position</span>
+            <span>
+              {Math.abs(instrument.latitude).toFixed(2)}° {latDir} ·{' '}
+              {Math.abs(instrument.longitude).toFixed(2)}° {lonDir}
+            </span>
+          </div>
+          <div className="selected-platform-summary__row">
+            <span className="selected-platform-summary__label">Variable</span>
+            <span>
+              {variableMeta.label} ({variableMeta.unit})
+            </span>
+          </div>
+          <div className="selected-platform-summary__row">
+            <span className="selected-platform-summary__label">Selected depth</span>
+            <span>{selectedDepth} m</span>
+          </div>
+          {comparison?.observation != null ? (
+            <div className="selected-platform-summary__row selected-platform-summary__row--highlight">
+              <span className="selected-platform-summary__label">Observation</span>
+              <span>
+                {formatVariableValue(comparison.observation, selectedVariable)}
+              </span>
+            </div>
+          ) : (
+            <div className="selected-platform-summary__row">
+              <span className="selected-platform-summary__label">Observation</span>
+              <span className="selected-platform-summary__na">
+                Unavailable at {selectedDepth} m
+              </span>
+            </div>
+          )}
+          <div className="selected-platform-summary__row">
+            <span className="selected-platform-summary__label">Data quality</span>
+            <span className="detail-value detail-value--good">{instrument.dataQuality}</span>
+          </div>
+        </div>
+      </section>
+
+      {profileSeries ? (
+        <section className="detail-section">
+          <ProfileChart
+            series={profileSeries}
+            maxDepth={instrument.maxDepth}
+            selectedDepth={selectedDepth}
+          />
+          <ProfileVariableSummary
+            profile={profile}
+            selectedDepth={selectedDepth}
+            selectedVariable={selectedVariable}
+          />
+        </section>
+      ) : (
+        <section className="detail-section">
+          <div className="validation-error-state">
+            <h4 className="subsection-title">VERTICAL PROFILE</h4>
+            <p className="validation-error-state__title">Missing variable data</p>
+            <p className="validation-error-state__hint">
+              No {variableMeta.label.toLowerCase()} ({variableMeta.unit}) profile samples are
+              available for this demo platform.
+            </p>
+          </div>
+        </section>
+      )}
+
+      {comparison ? (
+        <section className="detail-section">
+          <ComparisonStatsPanel
+            stats={comparison}
+            analysisMode={analysisMode}
+            apiModelDepth={apiModelDepth}
+            selectedDate={selectedDate}
+          />
+        </section>
+      ) : profileSeries ? (
+        <section className="detail-section">
+          <div className="validation-error-state">
+            <h4 className="subsection-title">VALIDATION</h4>
+            <p className="validation-error-state__title">Validation unavailable</p>
+            <p className="validation-error-state__hint">
+              No overlapping model and observation {variableMeta.label.toLowerCase()} samples
+              exist for this platform. Metrics cannot be computed.
+            </p>
+          </div>
+        </section>
+      ) : null}
+
+      <section className="detail-section">
+        <h4 className="subsection-title">PLATFORM DETAILS</h4>
+        <p className="control-hint control-hint--demo">{DEMO_DATA_SHORT}</p>
         <div className="detail-row">
           <span className="detail-label">Platform ID:</span>
           <span className="detail-value">{instrument.id}</span>
         </div>
         <div className="detail-row">
-          <span className="detail-label">Variable:</span>
-          <span className="detail-value">{variableMeta.label} ({variableMeta.unit})</span>
-        </div>
-        <div className="detail-row">
           <span className="detail-label">Status:</span>
           <span className="detail-value detail-value--active">{instrument.status}</span>
-        </div>
-      </section>
-      <section className="detail-section">
-        <h4 className="subsection-title">LOCATION</h4>
-        <div className="detail-coords">
-          {Math.abs(instrument.latitude).toFixed(1)}° {latDir}<br />
-          {Math.abs(instrument.longitude).toFixed(1)}° {lonDir}
-        </div>
-      </section>
-      <section className="detail-section">
-        <h4 className="subsection-title">DEPTH</h4>
-        <div className="detail-row">
-          <span className="detail-label">Current depth:</span>
-          <span className="detail-value">{instrument.currentDepth} m</span>
         </div>
         <div className="detail-row">
           <span className="detail-label">Maximum depth:</span>
           <span className="detail-value">{instrument.maxDepth} m</span>
         </div>
-      </section>
-      <section className="detail-section">
-        <h4 className="subsection-title">TIME</h4>
-        <div className="detail-coords">
-          {observationTime
-            ? observationTime.split('\n').map((line) => <span key={line}>{line}<br /></span>)
-            : 'N/A'}
-        </div>
-      </section>
-      {profileSeries ? (
-        <section className="detail-section">
-          <ProfileChart series={profileSeries} maxDepth={instrument.maxDepth} />
-        </section>
-      ) : (
-        <section className="detail-section">
-          <p className="control-hint">
-            No {variableMeta.label.toLowerCase()} profile data available for this platform.
-          </p>
-        </section>
-      )}
-      {comparison ? (
-        <ComparisonStatsPanel
-          stats={comparison}
-          analysisMode={analysisMode}
-          apiModelDepth={apiModelDepth}
-          selectedDate={selectedDate}
-        />
-      ) : (
-        <section className="detail-section">
-          <p className="control-hint">
-            Validation metrics unavailable — no overlapping model and observation samples for{' '}
-            {variableMeta.label.toLowerCase()} at this platform.
-          </p>
-        </section>
-      )}
-      <section className="detail-section">
-        <h4 className="subsection-title">PLATFORM DETAILS</h4>
         <div className="detail-row">
-          <span className="detail-label">Type:</span>
-          <span className="detail-value">{instrument.platformType}</span>
-        </div>
-        <div className="detail-row">
-          <span className="detail-label">Data quality:</span>
-          <span className="detail-value detail-value--good">{instrument.dataQuality}</span>
+          <span className="detail-label">Last observation:</span>
+          <span className="detail-value detail-value--wrap">
+            {observationTime
+              ? observationTime.split('\n').map((line) => <span key={line}>{line}<br /></span>)
+              : 'N/A'}
+          </span>
         </div>
       </section>
     </div>

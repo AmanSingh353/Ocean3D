@@ -1,7 +1,10 @@
 import type { AnalysisMode, RegionValidationStats, SpatialAnalysisSnapshot } from '../../types/analysis'
 import type { Instrument, InstrumentProfile, ValidationStats, OceanVariable } from '../../types/ocean'
 import { InstrumentDetails } from './InstrumentDetails'
+import { DemoDataBanner } from '../common/DemoDataBanner'
 import { RegionValidationPanel } from './RegionValidationPanel'
+import { VerticalSectionPanel } from './VerticalSectionPanel'
+import type { TransectEndpoints } from '../../types/analysis'
 
 interface ObservationPanelProps {
   selectedInstrumentId: string | null
@@ -21,6 +24,9 @@ interface ObservationPanelProps {
   spatialProfilesError: string | null
   selectedDepth: number
   spatialAnalysis: SpatialAnalysisSnapshot | null
+  transect?: TransectEndpoints
+  validationRegion?: import('../../data/validationRegions').ValidationRegionBounds
+  verticalSectionSourceMode?: import('../../utils/verticalSectionData').VerticalSectionDisplayMode
 }
 
 export function ObservationPanel({
@@ -41,9 +47,13 @@ export function ObservationPanel({
   spatialProfilesError,
   selectedDepth,
   spatialAnalysis,
+  transect,
+  validationRegion,
+  verticalSectionSourceMode = 'model',
 }: ObservationPanelProps) {
   const isRegionalValidation = analysisMode === 'regionalValidation'
-  const showAnalysisSummary = analysisMode !== 'model'
+  const isVerticalSection = analysisMode === 'verticalSection'
+  const showAnalysisSummary = analysisMode !== 'model' && !isVerticalSection
   const showEmpty =
     !selectedInstrumentId &&
     !profileLoading &&
@@ -63,6 +73,16 @@ export function ObservationPanel({
   return (
     <div className="observation-panel">
       <h2 className="panel-title">OBSERVATION</h2>
+      <DemoDataBanner compact />
+      {isVerticalSection && transect ? (
+        <VerticalSectionPanel
+          variable={selectedVariable}
+          date={selectedDate}
+          transect={transect}
+          selectedDepth={selectedDepth}
+          sectionDisplayMode={verticalSectionSourceMode}
+        />
+      ) : null}
       {showAnalysisSummary && regionValidation ? (
         <RegionValidationPanel
           stats={regionValidation}
@@ -74,6 +94,9 @@ export function ObservationPanel({
           selectedVariable={selectedVariable}
           selectedPoint={selectedSpatialPoint}
           selectedPlatformLabel={selectedInstrument?.id ?? selectedInstrumentId}
+          apiModelDepth={apiModelDepth}
+          spatialPoints={spatialAnalysis?.points}
+          validationRegion={validationRegion}
         />
       ) : null}
       {profileLoading && (
@@ -82,11 +105,14 @@ export function ObservationPanel({
         </div>
       )}
       {profileError && !profileLoading && (
-        <div className="observation-empty">
-          <p className="observation-empty__title">Observation data unavailable</p>
+        <div className="observation-empty validation-error-state">
+          <p className="observation-empty__title validation-error-state__title">
+            Observation data unavailable
+          </p>
           {selectedInstrumentId ? (
-            <p className="observation-empty__hint">
-              Could not load profile for {selectedInstrumentId}.
+            <p className="observation-empty__hint validation-error-state__hint">
+              Could not load demo profile for {selectedInstrumentId}. This is not a live INCOIS
+              feed — check API connectivity or select another platform.
             </p>
           ) : null}
           {onClearSelection ? (
@@ -117,10 +143,11 @@ export function ObservationPanel({
           comparison={comparison}
           observationTime={observationTime}
           selectedVariable={selectedVariable}
-          onClearSelection={onClearSelection}
-          analysisMode={analysisMode}
+          selectedDepth={selectedDepth}
           apiModelDepth={apiModelDepth}
           selectedDate={selectedDate}
+          onClearSelection={onClearSelection}
+          analysisMode={analysisMode}
         />
       ) : null}
     </div>
