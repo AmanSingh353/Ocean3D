@@ -22,6 +22,8 @@ interface TimelineProps {
   onTogglePlay: () => void
   onPrevious: () => void
   onNext: () => void
+  /** Optional label override (e.g. "Event Timeline" in disaster mode). */
+  timelineLabel?: string
 }
 
 export function Timeline({
@@ -37,6 +39,7 @@ export function Timeline({
   onTogglePlay,
   onPrevious,
   onNext,
+  timelineLabel,
 }: TimelineProps) {
   const maxIndex = Math.max(0, dates.length - 1)
   const atEnd = dateIndex >= maxIndex
@@ -44,6 +47,9 @@ export function Timeline({
 
   return (
     <div className={`timeline ${isPlaying ? 'timeline--playing' : ''}`}>
+      {timelineLabel ? (
+        <span className="timeline__mode-label">{timelineLabel}</span>
+      ) : null}
       <div className="timeline__controls">
         <button
           type="button"

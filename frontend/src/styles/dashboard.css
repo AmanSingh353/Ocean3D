@@ -2897,3 +2897,305 @@ button {
     margin: 0 8px;
   }
 }
+
+/* ── Disaster Management / Hazard Intelligence ── */
+
+.app-mode-switch {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--panel-dark);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+}
+
+.app-mode-switch__btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.app-mode-switch__btn--active {
+  color: var(--text-primary);
+  background: var(--accent-dim);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.hazard-disclaimer,
+.hazard-panel__subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin: 0 0 10px;
+}
+
+.hazard-panel {
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.hazard-panel__title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 8px;
+}
+
+.hazard-panel__empty,
+.hazard-panel__loading,
+.hazard-panel__hint,
+.hazard-panel__note {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.hazard-panel__note {
+  margin-top: 8px;
+}
+
+.hazard-panel__note--muted {
+  font-size: 11px;
+  font-style: italic;
+}
+
+.hazard-status-grid,
+.hazard-event-grid,
+.validation-confidence__metrics {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.hazard-status-grid__row,
+.hazard-event-grid__row,
+.validation-confidence__metrics > div {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.hazard-status-grid dt,
+.hazard-event-grid dt,
+.validation-confidence__metrics dt {
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.hazard-status-grid dd,
+.hazard-event-grid dd,
+.validation-confidence__metrics dd {
+  margin: 0;
+  color: var(--text-primary);
+  text-align: right;
+}
+
+.risk-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 4px;
+}
+
+.risk-badge--low {
+  background: rgba(40, 120, 160, 0.25);
+  color: #7ec8e3;
+}
+
+.risk-badge--moderate {
+  background: rgba(200, 170, 40, 0.25);
+  color: #e8c547;
+}
+
+.risk-badge--high {
+  background: rgba(220, 100, 40, 0.25);
+  color: #f0955a;
+}
+
+.risk-badge--critical {
+  background: rgba(200, 40, 60, 0.3);
+  color: #f07080;
+}
+
+.risk-legend {
+  margin-top: 8px;
+  padding: 8px;
+  background: var(--panel-dark);
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+}
+
+.risk-legend--compact {
+  margin-top: 6px;
+  padding: 6px 8px;
+}
+
+.risk-legend__title {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.risk-legend__items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.risk-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.risk-legend__swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.risk-legend__swatch--low { background: rgb(13, 89, 140); }
+.risk-legend__swatch--moderate { background: rgb(217, 191, 26); }
+.risk-legend__swatch--high { background: rgb(242, 115, 20); }
+.risk-legend__swatch--critical { background: rgb(230, 31, 38); }
+
+.anomaly-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.anomaly-list__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.anomaly-list__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.anomaly-list__metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 8px;
+  margin: 0;
+  font-size: 11px;
+}
+
+.anomaly-list__metrics dt {
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.anomaly-list__metrics dd {
+  margin: 0;
+  text-align: right;
+}
+
+.hazard-explanation-list {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.hazard-explanation-list li {
+  margin-bottom: 4px;
+}
+
+.hazard-category-select {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--panel-dark);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+}
+
+.control-panel__intro {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.45;
+  margin: 0 0 12px;
+}
+
+.validation-confidence__quality {
+  font-size: 12px;
+  margin: 0 0 8px;
+}
+
+.timeline__mode-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  white-space: nowrap;
+  padding-right: 8px;
+}
+
+.ocean-viewer__overlay--hazard-legend {
+  bottom: 52px;
+  left: 12px;
+  right: auto;
+  top: auto;
+  pointer-events: none;
+}
+
+.view-label__detail--hazard {
+  color: var(--accent);
+  font-style: italic;
+}
+
+.panel-subtitle {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+}
+
+@media (max-width: 900px) {
+  .app-mode-switch {
+    order: -1;
+    width: 100%;
+    margin-bottom: 4px;
+  }
+
+  .app-mode-switch__btn {
+    flex: 1;
+    font-size: 10px;
+    padding: 4px 6px;
+  }
+}

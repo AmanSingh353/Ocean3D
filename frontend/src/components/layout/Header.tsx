@@ -1,4 +1,6 @@
 import { HelpCircle, Maximize2, Settings, Waves } from 'lucide-react'
+import type { AppMode } from '../../types/appMode'
+import { APP_MODE_LABELS } from '../../types/appMode'
 import { formatHeaderDate } from '../../utils/dateFormat'
 
 interface HeaderProps {
@@ -7,6 +9,8 @@ interface HeaderProps {
   isLoading?: boolean
   hasError?: boolean
   onFullscreen: () => void
+  appMode?: AppMode
+  onAppModeChange?: (mode: AppMode) => void
 }
 
 export function Header({
@@ -15,6 +19,8 @@ export function Header({
   isLoading = false,
   hasError = false,
   onFullscreen,
+  appMode = 'oceanAnalysis',
+  onAppModeChange,
 }: HeaderProps) {
   const statusLabel = hasError ? 'DATA ERROR' : isLoading ? 'LOADING' : 'SYSTEM READY'
   const statusClass = hasError
@@ -39,6 +45,22 @@ export function Header({
         </div>
       </div>
       <div className="header__right">
+        {onAppModeChange ? (
+          <div className="app-mode-switch" role="tablist" aria-label="Application mode">
+            {(Object.keys(APP_MODE_LABELS) as AppMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                role="tab"
+                aria-selected={appMode === mode}
+                className={`app-mode-switch__btn ${appMode === mode ? 'app-mode-switch__btn--active' : ''}`}
+                onClick={() => onAppModeChange(mode)}
+              >
+                {APP_MODE_LABELS[mode]}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <div className={statusClass}>
           <span className="status-dot" />
           {statusLabel}

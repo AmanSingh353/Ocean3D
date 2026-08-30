@@ -31,6 +31,8 @@ import { TemperatureColorbar } from './TemperatureColorbar'
 import { VisualizationToolbar, type ViewMode } from './VisualizationToolbar'
 import { VerticalSectionView } from './VerticalSectionView'
 import type { AnalysisMode, SpatialAnalysisSnapshot, ValidationRegionBounds, TransectEndpoints } from '../../types/analysis'
+import type { AppMode } from '../../types/appMode'
+import type { HazardGridSnapshot } from '../../types/hazard'
 import type { InstrumentProfile } from '../../types/ocean'
 import type { VerticalSectionDisplayMode } from '../../utils/verticalSectionData'
 import { applySpatialAnalysisToGeometry } from '../../utils/spatialAnalysisField'
@@ -69,6 +71,8 @@ import {
 } from '../../utils/geoDebugOverlay'
 import { resolveModelBounds } from '../../utils/modelDomain'
 import { GeoDebugLabel } from './GeoDebugLabel'
+import { RiskLegend } from '../disaster/RiskLegend'
+import { blendHazardOverlayOnGeometry } from '../../utils/hazardOverlayField'
 import {
   INDIAN_OCEAN_VIEW_BOUNDS,
   GEO_MARKER_Y,
@@ -130,6 +134,10 @@ interface OceanViewerProps {
   profilesById?: Map<string, InstrumentProfile>
   availableDepths?: number[]
   spatialProfilesLoadingForSection?: boolean
+  appMode?: AppMode
+  hazardOverlayEnabled?: boolean
+  hazardGridSnapshot?: HazardGridSnapshot | null
+  hazardRegion?: ValidationRegionBounds
 }
 
 interface MarkerScreenPosition {
@@ -182,7 +190,21 @@ export function OceanViewer({
   profilesById = new Map(),
   availableDepths = [...OCEAN_DEPTHS],
   spatialProfilesLoadingForSection = false,
+  appMode = 'oceanAnalysis',
+  hazardOverlayEnabled = false,
+  hazardGridSnapshot = null,
+  hazardRegion,
 }: OceanViewerProps) {
+  const isDisasterMode = appMode === 'disasterManagement'
+  const hazardOverlayRef = useRef({ enabled: hazardOverlayEnabled, snapshot: hazardGridSnapshot })
+  hazardOverlayRef.current = { enabled: hazardOverlayEnabled, snapshot: hazardGridSnapshot }
+
+  const maybeBlendHazardOverlay = useCallback((geometry: THREE.BufferGeometry) => {
+    const { enabled, snapshot } = hazardOverlayRef.current
+    if (!enabled || !snapshot) return
+    const colors = geometry.getAttribute('color') as THREE.BufferAttribute | undefined
+    if (colors) blendHazardOverlayOnGeometry(colors, snapshot)
+  }, [])
   const canvasHostRef = useRef<HTMLDivElement>(null)
   const [hoverCoords, setHoverCoords] = useState<{ lat: number; lon: number } | null>(null)
   const instrumentsRef = useRef(instruments)
@@ -412,7 +434,8 @@ export function OceanViewer({
       temperatureField,
       temperatureRange,
     )
-  }, [temperatureField, temperatureRange, isTemperatureMode, meshOverlayReady, spatialAnalysis, meshOverlayMode, meshLegend, activeModelGrid])
+    maybeBlendHazardOverlay(refs.oceanMesh.geometry)
+  }, [temperatureField, temperatureRange, isTemperatureMode, meshOverlayReady, spatialAnalysis, meshOverlayMode, meshLegend, activeModelGrid, maybeBlendHazardOverlay, hazardOverlayEnabled, hazardGridSnapshot])
 
   // Update vertex colors when the API salinity field changes
   useEffect(() => {
@@ -439,7 +462,8 @@ export function OceanViewer({
       salinityField,
       salinityRange,
     )
-  }, [salinityField, salinityRange, isSalinityMode, meshOverlayReady, spatialAnalysis, meshOverlayMode, meshLegend, activeModelGrid])
+    maybeBlendHazardOverlay(refs.oceanMesh.geometry)
+  }, [salinityField, salinityRange, isSalinityMode, meshOverlayReady, spatialAnalysis, meshOverlayMode, meshLegend, activeModelGrid, maybeBlendHazardOverlay, hazardOverlayEnabled, hazardGridSnapshot])
 
   // Update vertex colors when the API chlorophyll field changes
   useEffect(() => {
@@ -466,7 +490,8 @@ export function OceanViewer({
       chlorophyllField,
       chlorophyllRange,
     )
-  }, [chlorophyllField, chlorophyllRange, isChlorophyllMode, meshOverlayReady, spatialAnalysis, meshOverlayMode, meshLegend, activeModelGrid])
+    maybeBlendHazardOverlay(refs.oceanMesh.geometry)
+  }, [chlorophyllField, chlorophyllRange, isChlorophyllMode, meshOverlayReady, spatialAnalysis, meshOverlayMode, meshLegend, activeModelGrid, maybeBlendHazardOverlay, hazardOverlayEnabled, hazardGridSnapshot])
 
   // Update vertex colors when the API current field changes
   useEffect(() => {
@@ -493,7 +518,8 @@ export function OceanViewer({
       currentField,
       currentMagnitudeRange,
     )
-  }, [currentField, currentMagnitudeRange, isCurrentMode, meshOverlayReady, spatialAnalysis, meshOverlayMode, meshLegend, activeModelGrid])
+    maybeBlendHazardOverlay(refs.oceanMesh.geometry)
+  }, [currentField, currentMagnitudeRange, isCurrentMode, meshOverlayReady, spatialAnalysis, meshOverlayMode, meshLegend, activeModelGrid, maybeBlendHazardOverlay, hazardOverlayEnabled, hazardGridSnapshot])
 
   // Update current vector arrows when API current field changes
   useEffect(() => {
@@ -785,19 +811,25 @@ export function OceanViewer({
   useEffect(() => {
     const refs = sceneRef.current
     if (!refs?.regionOutline) return
-    const showRegion =
+    const showValidationRegion =
       analysisMode === 'regionalValidation' && validationRegion != null
+    const showHazardRegion = isDisasterMode && hazardRegion != null
+    const showRegion = showValidationRegion || showHazardRegion
     refs.regionOutline.visible = showRegion
     if (!showRegion) return
 
+    const bounds = showHazardRegion && hazardRegion
+      ? hazardRegion
+      : validationRegion!
+
     refs.regionOutline.geometry.dispose()
     refs.regionOutline.geometry = createBoundsOutlineGeometry({
-      lat_min: validationRegion.latMin,
-      lat_max: validationRegion.latMax,
-      lon_min: validationRegion.lonMin,
-      lon_max: validationRegion.lonMax,
+      lat_min: bounds.latMin,
+      lat_max: bounds.latMax,
+      lon_min: bounds.lonMin,
+      lon_max: bounds.lonMax,
     })
-  }, [analysisMode, validationRegion])
+  }, [analysisMode, validationRegion, isDisasterMode, hazardRegion])
 
   useEffect(() => {
     const host = canvasHostRef.current
@@ -1029,6 +1061,11 @@ export function OceanViewer({
           {analysisModeLabel ? (
             <span className="view-label__detail view-label__detail--analysis">{analysisModeLabel}</span>
           ) : null}
+          {isDisasterMode ? (
+            <span className="view-label__detail view-label__detail--hazard">
+              Demo hazard-support view
+            </span>
+          ) : null}
           <span className="view-label__detail">{formatDisplayDate(currentDate)} · 00:00 UTC</span>
           {hoverCoords ? (
             <span className="view-label__detail view-label__detail--hint">
@@ -1088,6 +1125,11 @@ export function OceanViewer({
           />
         </div>
       )}
+      {isDisasterMode && hazardOverlayEnabled ? (
+        <div className="ocean-viewer__overlay ocean-viewer__overlay--hazard-legend">
+          <RiskLegend />
+        </div>
+      ) : null}
       <div className="ocean-viewer__overlay ocean-viewer__overlay--toolbar">
         <VisualizationToolbar
           viewMode={viewMode}
