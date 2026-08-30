@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Header } from './components/layout/Header'
 import { MainLayout } from './components/layout/MainLayout'
 import { ControlPanel } from './components/controls/ControlPanel'
@@ -13,8 +13,9 @@ import { useOcean } from './hooks/useOcean'
 import { useTimelinePlayback } from './hooks/useTimelinePlayback'
 import { useHazardAnalysis } from './hooks/useHazardAnalysis'
 import type { AppMode } from './types/appMode'
-import type { HazardCategoryId } from './types/hazard'
+import type { HazardId } from './types/hazard'
 import { DEFAULT_HAZARD_REGION } from './data/hazardRegions'
+import { getHazardDefinition, getPrimaryOceanVariable } from './hazards/registry'
 import type { ValidationRegionBounds } from './data/validationRegions'
 
 function DataStatusBanner() {
@@ -46,7 +47,7 @@ function Dashboard() {
   const ocean = useOcean()
 
   const [appMode, setAppMode] = useState<AppMode>('oceanAnalysis')
-  const [hazardCategory, setHazardCategory] = useState<HazardCategoryId>('strongCurrent')
+  const [hazardId, setHazardId] = useState<HazardId>('strongCurrent')
   const [hazardRegion, setHazardRegion] = useState<ValidationRegionBounds>({
     ...DEFAULT_HAZARD_REGION,
   })
@@ -54,12 +55,21 @@ function Dashboard() {
 
   const isDisasterMode = appMode === 'disasterManagement'
 
+  useEffect(() => {
+    if (!isDisasterMode) return
+    const primary = getPrimaryOceanVariable(getHazardDefinition(hazardId))
+    if (primary) ocean.setSelectedVariable(primary)
+  }, [isDisasterMode, hazardId, ocean.setSelectedVariable])
+
   const hazardAssessment = useHazardAnalysis({
     enabled: isDisasterMode,
-    category: hazardCategory,
+    hazardId,
     selectedVariable: ocean.selectedVariable,
     selectedDepth: ocean.selectedDepth,
     selectedDate: ocean.selectedDate,
+    previousDate:
+      ocean.dateIndex > 0 ? (ocean.availableDates[ocean.dateIndex - 1] ?? null) : null,
+    apiModelDepth: ocean.apiModelDepth,
     region: hazardRegion,
     temperatureField: ocean.oceanData,
     currentField: ocean.currentData,
@@ -68,6 +78,8 @@ function Dashboard() {
     instruments: ocean.instruments,
     comparison: ocean.comparison,
     regionValidation: ocean.regionValidation,
+    isModelLoading: ocean.isModelLoading,
+    availableTimestepCount: ocean.availableDates.length,
   })
 
   const [modelLayerEnabled, setModelLayerEnabled] = useState(true)
@@ -171,17 +183,16 @@ function Dashboard() {
         controls={
           isDisasterMode ? (
             <DisasterControlPanel
-              selectedVariable={ocean.selectedVariable}
-              onVariableChange={ocean.setSelectedVariable}
               selectedDepth={ocean.selectedDepth}
               onDepthChange={ocean.setSelectedDepth}
               apiModelDepth={ocean.apiModelDepth}
               availableDepths={ocean.availableDepths}
               depthTicks={ocean.depthTicks}
-              hazardCategory={hazardCategory}
-              onHazardCategoryChange={setHazardCategory}
+              hazardId={hazardId}
+              onHazardIdChange={setHazardId}
               hazardRegion={hazardRegion}
               onHazardRegionChange={setHazardRegion}
+              dataAvailability={hazardAssessment.dataAvailability}
               hazardOverlayEnabled={hazardOverlayEnabled}
               onHazardOverlayChange={setHazardOverlayEnabled}
               modelLayerEnabled={modelLayerEnabled}
@@ -291,7 +302,9 @@ function Dashboard() {
             spatialProfilesLoadingForSection={ocean.isSpatialProfilesLoading}
             appMode={appMode}
             hazardOverlayEnabled={isDisasterMode && hazardOverlayEnabled}
-            hazardGridSnapshot={hazardAssessment?.gridSnapshot ?? null}
+            hazardGridSnapshot={
+              hazardAssessment.status === 'success' ? hazardAssessment.gridSnapshot : null
+            }
             hazardRegion={isDisasterMode ? hazardRegion : undefined}
           />
         }
@@ -299,7 +312,10 @@ function Dashboard() {
           isDisasterMode ? (
             <DisasterObservationPanel
               assessment={hazardAssessment}
-              assessmentLoading={ocean.isModelLoading && !hazardAssessment}
+              assessmentLoading={
+                ocean.isModelLoading && hazardAssessment.statusMessage.startsWith('Loading')
+              }
+              availableTimestepCount={ocean.availableDates.length}
               selectedInstrumentId={ocean.selectedInstrumentId}
               selectedInstrument={ocean.selectedInstrument}
               selectedVariable={ocean.selectedVariable}
@@ -309,8 +325,6 @@ function Dashboard() {
               apiModelDepth={ocean.apiModelDepth}
               selectedDate={ocean.selectedDate}
               selectedDepth={ocean.selectedDepth}
-              profileLoading={ocean.isProfileLoading}
-              profileError={ocean.profileError}
               onClearSelection={handleClearInstrument}
               profile={ocean.instrumentProfile}
             />
@@ -352,6 +366,11 @@ function Dashboard() {
             onDateIndexChange={handleDateIndexChange}
             onTogglePlay={playback.togglePlay}
             timelineLabel={isDisasterMode ? 'Event Timeline' : undefined}
+            hazardSummary={
+              isDisasterMode && hazardAssessment.status === 'success'
+                ? hazardAssessment.timelineSummary
+                : null
+            }
             onPrevious={() => {
               playback.pause()
               ocean.setDateIndex(Math.max(0, ocean.dateIndex - 1))

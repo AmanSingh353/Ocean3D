@@ -10,17 +10,19 @@ const RISK_RGB: Record<RiskLevel, { r: number; g: number; b: number }> = {
   CRITICAL: { r: 0.9, g: 0.12, b: 0.15 },
 }
 
-/** Blend existing ocean vertex colors with semi-transparent hazard risk colors. */
+/** Blend hazard risk colors only on analyzed in-region cells; leave others unchanged. */
 export function blendHazardOverlayOnGeometry(
   colors: BufferAttribute,
   snapshot: HazardGridSnapshot,
   blend = 0.45,
 ): void {
-  const { grid, riskLevels } = snapshot
+  const { grid, riskLevels, analyzed } = snapshot
   const cols = grid.longitudes.length
 
   for (let j = 0; j < grid.latitudes.length; j++) {
     for (let i = 0; i < grid.longitudes.length; i++) {
+      if (!analyzed[j]?.[i]) continue
+
       const idx = j * cols + i
       const lat = grid.latitudes[j]
       const lon = grid.longitudes[i]
@@ -49,6 +51,7 @@ export function applyHazardOverlayToGeometry(
   snapshot: HazardGridSnapshot,
 ): void {
   colorGridVertices(colors, snapshot.grid, (j, i) => {
+    if (!snapshot.analyzed[j]?.[i]) return null
     const risk = snapshot.riskLevels[j]?.[i] ?? 'LOW'
     return RISK_RGB[risk]
   })

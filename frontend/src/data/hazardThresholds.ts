@@ -7,7 +7,7 @@ import type { RiskLevel } from '../types/hazard'
  * before any operational use.
  */
 export const DEMO_HAZARD_THRESHOLD_DISCLAIMER =
-  'Demo hazard analysis — thresholds and results are illustrative and not an operational warning.'
+  'Demo hazard analysis — thresholds are illustrative and not operational warning criteria.'
 
 export interface ThresholdBands {
   /** Values at or below this are LOW (for anomaly magnitude or absolute speed). */

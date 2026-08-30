@@ -3,14 +3,15 @@ import type { ValidationStats, Instrument, OceanVariable, InstrumentProfile } fr
 import type { RegionValidationStats } from '../../types/analysis'
 import { HazardStatusPanel } from './HazardStatusPanel'
 import { HazardEventPanel } from './HazardEventPanel'
-import { AnomalyPanel } from './AnomalyPanel'
 import { HazardExplanation } from './HazardExplanation'
 import { ValidationConfidencePanel } from './ValidationConfidencePanel'
+import { DecisionSupportPanel } from './DecisionSupportPanel'
 import { InstrumentDetails } from '../observation/InstrumentDetails'
 
 interface DisasterObservationPanelProps {
-  assessment: HazardAssessment | null
+  assessment: HazardAssessment
   assessmentLoading?: boolean
+  availableTimestepCount: number
   selectedInstrumentId: string | null
   selectedInstrument: Instrument | null
   selectedVariable: OceanVariable
@@ -20,8 +21,6 @@ interface DisasterObservationPanelProps {
   apiModelDepth: number
   selectedDate: string
   selectedDepth: number
-  profileLoading?: boolean
-  profileError?: string | null
   onClearSelection: () => void
   profile: InstrumentProfile | null
 }
@@ -29,6 +28,7 @@ interface DisasterObservationPanelProps {
 export function DisasterObservationPanel({
   assessment,
   assessmentLoading = false,
+  availableTimestepCount,
   selectedInstrumentId,
   selectedInstrument,
   selectedVariable,
@@ -41,19 +41,28 @@ export function DisasterObservationPanel({
   onClearSelection,
   profile,
 }: DisasterObservationPanelProps) {
+  const hazardVariableMatch =
+    assessment.status === 'success' &&
+    comparison != null &&
+    assessment.hazardVariable === selectedVariable
+
   return (
     <div className="observation-panel observation-panel--disaster">
       <h2 className="panel-title">HAZARD INTELLIGENCE</h2>
 
       <HazardStatusPanel assessment={assessment} loading={assessmentLoading} />
-      <HazardEventPanel assessment={assessment} />
-      <AnomalyPanel indicators={assessment?.indicators ?? []} />
-      <HazardExplanation assessment={assessment} />
-      <ValidationConfidencePanel
+      <HazardEventPanel
         assessment={assessment}
+        availableTimestepCount={availableTimestepCount}
+      />
+      <HazardExplanation assessment={assessment.status === 'success' ? assessment : null} />
+      <ValidationConfidencePanel
+        assessment={assessment.status === 'success' ? assessment : null}
         comparison={comparison}
         regionValidation={regionValidation}
+        hazardVariableMatch={hazardVariableMatch}
       />
+      <DecisionSupportPanel assessment={assessment} />
 
       {selectedInstrumentId && selectedInstrument && profile ? (
         <>
@@ -76,8 +85,8 @@ export function DisasterObservationPanel({
         <p className="hazard-panel__hint">Loading platform profile...</p>
       ) : (
         <p className="hazard-panel__hint">
-          Select an Argo or glider platform on the map to link hazard indicators with
-          observation/model validation.
+          Select an Argo or glider platform to link hazard indicators with observation/model
+          validation.
         </p>
       )}
     </div>

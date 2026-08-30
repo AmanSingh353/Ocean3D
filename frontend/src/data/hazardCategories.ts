@@ -1,38 +1,41 @@
-import type { HazardCategoryId, HazardCategoryMeta } from '../types/hazard'
+/** Re-exports from multi-hazard registry for backward compatibility. */
+export {
+  getHazardDefinition,
+  listHazardDefinitions,
+  getRequiredVariables,
+  getPrimaryOceanVariable,
+  checkDataAvailability,
+} from '../hazards/registry'
 
-export const HAZARD_CATEGORIES: readonly HazardCategoryMeta[] = [
-  {
-    id: 'cycloneOceanConditions',
-    label: 'Cyclone / Severe-Weather Ocean Conditions',
-    description:
-      'Ocean-condition monitoring support — not cyclone detection or track forecasting.',
-  },
-  {
-    id: 'stormSurgeSupport',
-    label: 'Storm Surge / Coastal Flooding Support',
-    description:
-      'Coastal ocean-condition indicators — not storm-surge prediction without coastal model data.',
-  },
-  {
-    id: 'marineAnomaly',
-    label: 'Marine / Ocean Anomaly',
-    description: 'Anomaly-based ocean state monitoring against demo reference values.',
-  },
-  {
-    id: 'strongCurrent',
-    label: 'Strong / Hazardous Current Conditions',
-    description: 'Current-speed hazard indicator using existing model current data.',
-  },
-] as const
+export { HAZARD_DEFINITION_LIST as HAZARD_CATEGORIES } from '../hazards/definitions'
 
-export function getHazardCategoryMeta(id: HazardCategoryId): HazardCategoryMeta {
-  return HAZARD_CATEGORIES.find((c) => c.id === id) ?? HAZARD_CATEGORIES[0]
+import type { HazardId } from '../types/hazard'
+import { getHazardDefinition, getPrimaryOceanVariable, getRequiredVariables } from '../hazards/registry'
+import type { OceanVariable } from '../types/ocean'
+
+export function getHazardCategoryConfig(id: HazardId) {
+  const def = getHazardDefinition(id)
+  return {
+    id: def.id,
+    label: def.name,
+    description: def.description,
+    primaryVariable: getPrimaryOceanVariable(def) ?? ('temperature' as OceanVariable),
+    secondaryVariables: [] as OceanVariable[],
+    allowsVariableSelection: def.id === 'marineHeatAnomaly',
+  }
 }
 
-/** Honest event labels — no false disaster claims. */
-export const HAZARD_EVENT_LABELS: Record<HazardCategoryId, string> = {
-  cycloneOceanConditions: 'Elevated ocean-condition indicator',
-  stormSurgeSupport: 'Potential hazard-support region (coastal ocean)',
-  marineAnomaly: 'Demo ocean anomaly detected',
-  strongCurrent: 'Elevated current-speed indicator',
+export function resolveHazardVariable(hazardId: HazardId): OceanVariable | null {
+  return getPrimaryOceanVariable(getHazardDefinition(hazardId))
 }
+
+export function getAnalysisVariables(hazardId: HazardId): OceanVariable[] {
+  return getRequiredVariables(getHazardDefinition(hazardId))
+}
+
+export function getHazardCategoryMeta(id: HazardId) {
+  const def = getHazardDefinition(id)
+  return { id: def.id, label: def.name, description: def.description }
+}
+
+export const MARINE_ANOMALY_VARIABLES: OceanVariable[] = ['temperature', 'salinity', 'chlorophyll']
